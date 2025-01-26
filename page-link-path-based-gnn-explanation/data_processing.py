@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import itertools
 import networkx as nx
+import os
 from utils import eids_split, remove_all_edges_of_etype, get_num_nodes_dict
 
 def process_grn_data(g,
@@ -122,6 +123,30 @@ def edge_label_creation(ecoli1_gold,edge_list):
          edge_df.loc[idx,'edge']=ecoli1_gold.iat[i,2]
    return edge_df
 
+
+def save_graphs_to_folder(graphs, folder_path):
+    """
+    DGL 그래프들을 지정된 폴더에 저장하는 함수.
+
+    Parameters:
+    ----------
+    graphs : dict
+        저장할 그래프 딕셔너리. 키는 그래프 이름, 값은 DGL 그래프.
+    folder_path : str
+        그래프를 저장할 폴더 경로.
+    """
+    # 폴더가 존재하지 않으면 생성
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    # 그래프 저장
+    for graph_name, graph in graphs.items():
+        save_path = os.path.join(folder_path, f"{graph_name}.bin")
+        dgl.save_graphs(save_path, graph)
+        print(f"그래프 '{graph_name}'이(가) {save_path}에 저장되었습니다.")
+
+
+
 def convert_grn_to_dgl_graph(file_hetero,file_null,file_traject,file_gold):
     """
     GRN 데이터를 DGL 그래프 형태로 변환하는 함수
@@ -228,10 +253,27 @@ def convert_grn_to_dgl_graph(file_hetero,file_null,file_traject,file_gold):
     print("Basic Augmented Graph:", g_basic_aug)
     print("Basic TS Augmented Graph:", g_basic_TS_aug)
 
+
+    # 그래프를 저장할 폴더 경로
+    folder_path = "./datasets"
+
+    # 그래프를 딕셔너리로 저장
+    graphs = {
+        "basic_graph": g_basic,
+        "basic_ts_graph": g_basic_TS,
+        "basic_aug_graph": g_basic_aug,
+        "basic_ts_aug_graph": g_basic_TS_aug
+    }
+
+    # 그래프 저장
+    save_graphs_to_folder(graphs, folder_path)
+    
     return g_basic, g_basic_TS, g_basic_aug, g_basic_TS_aug
 
 # Example usage:
 # g_basic, g_basic_TS, g_basic_aug, g_basic_TS_aug = data_preprocessing_dgl('folder_name', 'file_hetero.tsv', 'file_null.tsv', 'file_traject.tsv', 'file_gold.tsv')
+
+
 
 
 def process_data(g, 
