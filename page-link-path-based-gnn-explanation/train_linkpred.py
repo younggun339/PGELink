@@ -47,7 +47,7 @@ parser.add_argument('--config_path', type=str, default='', help='path of saved c
 '''
 모델 지정을 위한 추가 코드.
 '''
-parser.add_argument('--model_name', type=str, default='HeteroRGCN', help='Name of the GNN model to use')
+# parser.add_argument('--model_name', type=str, default='HeteroRGCN', help='Name of the GNN model to use')
 
 args = parser.parse_args()
 
@@ -60,12 +60,12 @@ elif 'citation' in args.dataset_name:
     args.tgt_ntype = 'paper'
 
 #################
-if args.model_name == 'HeteroRGCN':
-    encoder = HeteroRGCN(mp_g, args.emb_dim, args.hidden_dim, args.out_dim)
-elif args.model_name == 'GRNGNN':
-    encoder = GRNGNN(mp_g, args.emb_dim, args.hidden_dim, args.out_dim)
-else:
-    raise ValueError(f"Unsupported model_name: {args.model_name}")
+# if args.model_name == 'HeteroRGCN':
+#     encoder = HeteroRGCN(mp_g, args.emb_dim, args.hidden_dim, args.out_dim)
+# elif args.model_name == 'GRNGNN':
+#     encoder = GRNGNN(mp_g, args.emb_dim, args.hidden_dim, args.out_dim)
+# else:
+#     raise ValueError(f"Unsupported model_name: {args.model_name}")
 
 ######################
     
