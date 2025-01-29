@@ -81,8 +81,6 @@ parser.add_argument('--out_dim', type=int, default=32)
 '''
 Link predictor args
 '''
-parser.add_argument('--link_pred_op', type=str, default='dot', choices=['dot', 'cos', 'ele', 'cat'],
-                   help='operation passed to dgl.EdgePredictor')
 parser.add_argument('--lr', type=float, default=0.01, help='link predictor learning_rate') 
 parser.add_argument('--num_epochs', type=int, default=200, help='How many epochs to train')
 parser.add_argument('--eval_interval', type=int, default=1, help="Evaluate once per how many epochs")
@@ -92,6 +90,19 @@ parser.add_argument('--sample_neg_edges', default=False, action='store_true',
                     help='If False, use fixed negative edges. If True, sample negative edges in each epoch')
 parser.add_argument('--config_path', type=str, default='', help='path of saved configuration args')
 
+
+parser.add_argument('--dec', type=str, default='dot_sum', choices=['dot', 'cos', 'ele', 'cat', 'dot_sum'],
+                   help='Edge predictor에서 사용할 디코딩 연산 방식')
+parser.add_argument('--af_val', type=str, default='F.silu', choices=['F.silu', 'F.sigmoid', 'F.tanh'],
+                   help='Edge predictor에서 사용할 활성화 함수')
+parser.add_argument('--var', type=str, default='ChebConv', choices=['ChebConv', 'SSGConv', 'ClusterGCNConv', 'HypergraphConv'],
+                   help='GNN 변형 방식 선택')
+parser.add_argument('--num_layers', type=int, default=3,
+                   help='GNN의 레이어 개수')
+
+parser.add_argument('--aggr', type=str, default='sum', choices=['sum', 'add'],
+                   help='operation passed to dgl.EdgePredictor')
+
 args = parser.parse_args()
 
     
@@ -100,20 +111,20 @@ if torch.cuda.is_available() and args.device_id >= 0:
 else:
     device = torch.device('cpu')
 
-if args.link_pred_op in ['cat']:
-    pred_kwargs = {"in_feats": args.out_dim, "out_feats": 1}
-else:
-    pred_kwargs = {}
-
 if args.config_path:
     args = set_config_args(args, args.config_path, args.dataset_name, 'train_eval')
     
 print_args(args)
 
 
-
+def move_to_device(data, device):
+    data.x = data.x.to(device)
+    data.edge_index = data.edge_index.to(device)
+    data.edge_label = data.edge_label.to(device)
+    data.edge_label_index = data.edge_label_index.to(device)
+    return data
 ''' CODE TO RUN AFTER PREPROCESSING '''
-def main_run():
+def main_run(data, model, optimizer, criterion):
   auprs =0
   aucs =0
 
@@ -127,23 +138,11 @@ def main_run():
         key="edge_label"
     )
 
-    train_data, val_data, test_data = split(args.dataset)
+    train_data, val_data, test_data = split(data)
 
-# 데이터 디바이스 이동
-    train_data.x = train_data.x.to(device)
-    train_data.edge_index = train_data.edge_index.to(device)
-    train_data.edge_label = train_data.edge_label.to(device)
-    train_data.edge_label_index = train_data.edge_label_index.to(device)
-
-    val_data.x = val_data.x.to(device)
-    val_data.edge_index = val_data.edge_index.to(device)
-    val_data.edge_label = val_data.edge_label.to(device)
-    val_data.edge_label_index = val_data.edge_label_index.to(device)
-
-    test_data.x = test_data.x.to(device)
-    test_data.edge_index = test_data.edge_index.to(device)
-    test_data.edge_label = test_data.edge_label.to(device)
-    test_data.edge_label_index = test_data.edge_label_index.to(device)
+    train_data = move_to_device(train_data, device)
+    val_data = move_to_device(val_data, device)
+    test_data = move_to_device(test_data, device)
 
     index=(train_data.edge_label == 1).nonzero(as_tuple=True)[0]
 
@@ -151,7 +150,7 @@ def main_run():
     in_channels=data.num_features
     print(f"in_channels : {in_channels}")
 
-    model = train_link_predictor(model, train_data, val_data, optimizer, criterion,args.epoch,args.af_val,args.dec).to(device)
+    model = train_link_predictor(model.to(device), train_data, val_data, optimizer, criterion,args.num_epochs,args.af_val,args.dec).to(device)
 
 
     test_auc, precision, recall,fpr, tpr, mcc, jac_score, cohkap_score, f1, top_k = eval_link_predictor(model, test_data,args.af_val,args.dec)
@@ -163,9 +162,9 @@ def main_run():
   mean_aupr = float(auprs/10)
 
 
-  list1 = [args.dec, args.af_val,args.num_layers,args.epoch, args.aggr, args.var,mean_auc, mean_aupr, mcc, jac_score,cohkap_score, f1, top_k]
+  list1 = [args.dec, args.af_val,args.num_layers,args.num_epochs, args.aggr, args.var,mean_auc, mean_aupr, mcc, jac_score,cohkap_score, f1, top_k]
   df = pd.DataFrame(list1).T
-  df.columns = ["dec", "af_val","num_layers", "epoch", "aggr", "var","auc", "aupr", "mcc", "jac_score","cohkap_score", "f1", "top_k"]
+  df.columns = ["dec", "af_val","num_layers", "num_epochs", "aggr", "var","auc", "aupr", "mcc", "jac_score","cohkap_score", "f1", "top_k"]
 
 
   return df
@@ -174,12 +173,12 @@ def main_run():
 
 data = load_grn_dataset(args.dataset_dir, args.dataset_name)
 
-model =  GRNGNN(data.num_features, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.epoch,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
+model =  GRNGNN(data.num_features, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
 
-optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)#RMSprop(params=model.parameters())#
+optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)#RMSprop(params=model.parameters())#
 criterion = torch.nn.BCEWithLogitsLoss()
 
-main_run()
+result=main_run(data, model, optimizer, criterion)
 
 if args.save_model:
     output_dir = Path.cwd().joinpath(args.saved_model_dir)
