@@ -77,7 +77,7 @@ def process_grn_data(g,
 
 
 
-def load_grn_dataset(dataset_dir, dataset_name, val_ratio, test_ratio):
+def load_grn_dataset_dgl(dataset_dir, dataset_name, val_ratio, test_ratio):
     '''
     Parameters
     ----------
@@ -109,4 +109,23 @@ def load_grn_dataset(dataset_dir, dataset_name, val_ratio, test_ratio):
     return g, processed_g
 
 
+
+
+
+def load_grn_dataset(dataset_dir, dataset_name):
+    '''
+    Parameters
+    ----------
+    dataset_dir : string
+        dataset directory
+    
+    dataset_name : string
+
+    Returns:
+    ----------
+
+    '''
+    graph_saving_path = f'{dataset_dir}/{dataset_name}'
+    data = torch.load(graph_saving_path+".pt")#.cuda()
+    return data
 
