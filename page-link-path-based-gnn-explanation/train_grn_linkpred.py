@@ -128,7 +128,7 @@ def main_run(data, model, optimizer, criterion):
   auprs =0
   aucs =0
 
-  for i in range(1) : ## 본래10, 임시로 3
+  for i in range(10) : ## 본래10, 임시로 3
     print("i is : ", i)
     split = T.RandomLinkSplit(
         num_val=args.valid_ratio,
@@ -178,7 +178,14 @@ model =  GRNGNN(data.num_features, args.hidden_dim_1, args.hidden_dim_2, args.ou
 optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)#RMSprop(params=model.parameters())#
 criterion = torch.nn.BCEWithLogitsLoss()
 
-result=main_run(data, model, optimizer, criterion)
+df=main_run(data, model, optimizer, criterion)
+# 주요 성능 지표 출력
+print("\n=== Model Performance Metrics ===")
+print(f"AUC         : {df['auc'].values[0]:.4f}")
+print(f"AUPR        : {df['aupr'].values[0]:.4f}")
+print(f"F1-score    : {df['f1'].values[0]:.4f}")
+print(f"MCC         : {df['mcc'].values[0]:.4f}")
+print("\n=================================\n")
 
 if args.save_model:
     output_dir = Path.cwd().joinpath(args.saved_model_dir)
