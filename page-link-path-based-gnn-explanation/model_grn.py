@@ -199,5 +199,63 @@ def prediction(model, data,af_val,dec):
     print(pred)
     return pred
 
+def get_node_features(mp_g):
+    """
+    DGL 그래프에서 모든 노드 속성을 하나의 feature matrix로 변환하는 함수
+    """
+    node_feats = []
+    for key in mp_g.ndata.keys():  # 모든 노드 속성 가져오기
+        feat = mp_g.ndata[key].float()  # Float 타입 변환
+        node_feats.append(feat)
+    
+    return torch.cat(node_feats, dim=1)  # 모든 feature concat
 
 
+def get_edge_features(mp_g):
+    """
+    DGL 그래프에서 모든 엣지 속성을 하나의 feature matrix로 변환하는 함수
+    """
+    edge_feats = []
+    for key in mp_g.edata.keys():
+        feat = mp_g.edata[key].float()
+        edge_feats.append(feat)
+    
+    return torch.cat(edge_feats, dim=1) if edge_feats else None  # 엣지 특징이 없을 수도 있음
+
+
+@torch.no_grad()
+def prediction_dgl(model, mp_g, af_val, dec):
+    model.eval()
+
+    # 노드 feature 가져오기 (모든 feature 합침)
+    node_features = get_node_features(mp_g).to(device)
+
+    # 엣지 index 가져오기
+    src, tgt = mp_g.edges()
+    edge_index = torch.stack([src, tgt], dim=0).to(device)
+
+    # 음성 샘플링 (negative edges)
+    neg_edge_index = negative_sampling(
+        edge_index=edge_index,
+        num_nodes=mp_g.num_nodes(),
+        method='sparse'
+    ).to(device)
+
+    # edge_label_index 및 label 생성
+    edge_label_index = torch.cat([edge_index, neg_edge_index], dim=-1).to(device)
+    edge_label = torch.cat([
+        torch.ones(edge_index.shape[1], dtype=torch.long, device=device),
+        torch.zeros(neg_edge_index.shape[1], dtype=torch.long, device=device)
+    ], dim=0)
+
+    # 모델 입력 인코딩
+    z = model.encode(node_features, edge_index, af_val)
+
+    # 예측 (엣지 디코딩)
+    out = model.decode(z, edge_label_index, dec).cpu().numpy()
+
+    # 임계값 적용하여 binary classification
+    pred = (out > 0.5).astype(int)
+    print(pred)
+
+    return pred

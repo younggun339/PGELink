@@ -6,10 +6,26 @@ from tqdm.auto import tqdm
 from pathlib import Path
 
 from utils import set_seed, print_args, set_config_args
-from data_processing import load_dataset
-from model_grn import GRNGNN
-from data_grn_processing import load_grn_dataset
+from model_grn import GRNGNN, prediction_dgl
+from data_grn_processing import load_grn_dataset, load_grn_dataset_dgl
 from explainer import PaGELink
+
+
+# DGL 그래프에서 feature dimension 가져오기 (feat이 아닌 모든 ndata 속성 사용)
+def get_in_dim(mp_g):
+    """
+    DGL 그래프에서 모든 노드 feature의 총 차원을 계산하는 함수
+    """
+    node_feats = []
+    for key in mp_g.ndata.keys():  # 모든 노드 feature 속성 확인
+        feat = mp_g.ndata[key]  # 해당 feature 텐서 가져오기
+        if len(feat.shape) == 2:  # (num_nodes, feature_dim) 형태일 경우만 추가
+            node_feats.append(feat.shape[1])
+    
+    if not node_feats:
+        raise ValueError("No valid node features found in graph! Check ndata.")
+
+    return sum(node_feats)  # 모든 feature 차원을 더해서 총 in_dim 반환
 
 
 parser = argparse.ArgumentParser(description='Explain link predictor')
@@ -89,8 +105,17 @@ if not args.saved_model_name:
 print_args(args)
 set_seed(0)
 
-data = load_grn_dataset(args.dataset_dir, args.dataset_name)
-model = GRNGNN(data.num_features, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
+
+processed_g = load_grn_dataset_dgl(args.dataset_dir, args.dataset_name, args.valid_ratio, args.test_ratio)[1]
+mp_g, train_pos_g, train_neg_g, val_pos_g, val_neg_g, test_pos_g, test_neg_g = [g.to(device) for g in processed_g]
+
+# DGL 그래프에서 feature dimension 가져오기
+try:
+    in_dim = get_in_dim(mp_g)
+except KeyError:
+    raise ValueError("Graph does not contain 'feat' in node features. Ensure features are properly assigned.")
+
+model = GRNGNN(in_dim, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
 
 state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='gpu')
 model.load_state_dict(state)  
@@ -102,39 +127,39 @@ pagelink = PaGELink(model,
                     num_epochs=args.num_epochs,
                     log=True).to(device)
 
+# 예측 실행
+with torch.no_grad():
+    edge_predictions = prediction_dgl(model, mp_g, args.af_val, args.dec)
 
-model = train_link_predictor(model.to(device), train_data, val_data, optimizer, criterion,args.num_epochs,args.af_val,args.dec).to(device)
+pred_edge_to_comp_g_edge_mask = {}
+pred_edge_to_paths = {}
 
-
-test_auc, precision, recall,fpr, tpr, mcc, jac_score, cohkap_score, f1, top_k = eval_link_predictor(model, test_data,args.af_val,args.dec)
 
 test_src_nids, test_tgt_nids = test_pos_g.edges()
 test_ids = range(test_src_nids.shape[0])
 if args.max_num_samples > 0:
     test_ids = test_ids[:args.max_num_samples]
 
-pred_edge_to_comp_g_edge_mask = {}
-pred_edge_to_paths = {}
 for i in tqdm(test_ids):
     src_nid, tgt_nid = test_src_nids[i].unsqueeze(0), test_tgt_nids[i].unsqueeze(0)
     
-    with torch.no_grad():
-        pred = model(src_nid, tgt_nid, mp_g).sigmoid().item() > 0.5
+    if edge_predictions[i] == 1:
+        src_tgt = (int(src_nid), int(tgt_nid))  # 순수 노드 ID만 저장
+        # PaGE-Link로 설명 생성
+        paths, comp_g_edge_mask_dict = pagelink.explain(
+            src_nid,
+            tgt_nid,
+            mp_g,
+            args.num_hops,
+            args.prune_max_degree,
+            args.k_core,
+            args.num_paths,
+            args.max_path_length,
+            return_mask=True
+        )
 
-    if pred:
-        src_tgt = ((args.src_ntype, int(src_nid)), (args.tgt_ntype, int(tgt_nid)))
-        paths, comp_g_edge_mask_dict = pagelink.explain(src_nid, 
-                                                        tgt_nid, 
-                                                        mp_g,
-                                                        args.num_hops,
-                                                        args.prune_max_degree,
-                                                        args.k_core, 
-                                                        args.num_paths, 
-                                                        args.max_path_length,
-                                                        return_mask=True)
-        
-        pred_edge_to_comp_g_edge_mask[src_tgt] = comp_g_edge_mask_dict 
-        pred_edge_to_paths[src_tgt] = paths
+    pred_edge_to_comp_g_edge_mask[src_tgt] = comp_g_edge_mask_dict
+    pred_edge_to_paths[src_tgt] = paths
 
 if args.save_explanation:
     if not os.path.exists(args.saved_explanation_dir):
