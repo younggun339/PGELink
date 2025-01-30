@@ -117,7 +117,7 @@ except KeyError:
 
 model = GRNGNN(in_dim, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
 
-state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='gpu')
+state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='cuda')
 model.load_state_dict(state)  
 
 pagelink = PaGELink(model, 

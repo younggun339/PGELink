@@ -101,6 +101,9 @@ def load_grn_dataset_dgl(dataset_dir, dataset_name, val_ratio, test_ratio):
   
     '''
     graph_saving_path = f'{dataset_dir}/{dataset_name}'
+    if not graph_saving_path.endswith(".bin"):
+        graph_saving_path += ".bin"
+    
     graph_list, _ = dgl.load_graphs(graph_saving_path)
     g = graph_list[0] # 리스트로 반환되나 실상 단일 그래프이므로.
  
