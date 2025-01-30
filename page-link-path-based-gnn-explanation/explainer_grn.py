@@ -5,30 +5,30 @@ import numpy as np
 from tqdm.auto import tqdm
 from collections import defaultdict
 from utils import get_ntype_hetero_nids_to_homo_nids, get_homo_nids_to_ntype_hetero_nids, get_ntype_pairs_to_cannonical_etypes
-from utils import hetero_src_tgt_khop_in_subgraph, get_neg_path_score_func, k_shortest_paths_with_max_length
+from utils import src_tgt_khop_in_subgraph, get_neg_path_score_func, k_shortest_paths_with_max_length
+from model_grn import prediction_dgl
+def get_edge_mask_dict(ghomo):
+    """
+    동질 그래프에서 엣지 마스크를 생성하는 함수.
 
-def get_edge_mask_dict(ghetero):
-    '''
-    Create a dictionary mapping etypes to learnable edge masks 
-            
     Parameters
     ----------
-    ghetero : heterogeneous dgl graph.
+    ghomo : dgl.DGLGraph
+        동질 그래프 (homogeneous graph).
 
-    Return
-    ----------
-    edge_mask_dict : dictionary
-        key=etype, value=torch.nn.Parameter with size number of etype edges
-    '''
-    device = ghetero.device
-    edge_mask_dict = {}
-    for etype in ghetero.canonical_etypes:
-        num_edges = ghetero.num_edges(etype)
-        num_nodes = ghetero.edge_type_subgraph([etype]).num_nodes()
+    Returns
+    -------
+    edge_mask : torch.nn.Parameter
+        그래프의 모든 엣지에 대한 학습 가능한 마스크 (1D 텐서).
+    """
+    device = ghomo.device
+    num_edges = ghomo.num_edges()
+    num_nodes = ghomo.num_nodes()
 
-        std = torch.nn.init.calculate_gain('relu') * np.sqrt(2.0 / (2 * num_nodes))
-        edge_mask_dict[etype] = torch.nn.Parameter(torch.randn(num_edges, device=device) * std)
-    return edge_mask_dict
+    std = torch.nn.init.calculate_gain('relu') * np.sqrt(2.0 / (2 * num_nodes))
+    edge_mask = torch.nn.Parameter(torch.randn(num_edges, device=device) * std)
+
+    return edge_mask
 
 def remove_edges_of_high_degree_nodes(ghomo, max_degree=10, always_preserve=[]):
     '''
@@ -137,11 +137,8 @@ def comp_g_paths_to_paths(comp_g, comp_g_paths):
     paths = []
     g_nids = comp_g.ndata[dgl.NID]
     for comp_g_path in comp_g_paths:
-        path = []
-        for can_etype, u, v in comp_g_path:
-            u_ntype, _, v_ntype = can_etype
-            path += [(can_etype, g_nids[u_ntype][u].item(), g_nids[v_ntype][v].item())]
-        paths += [path]
+        path = [(u.item(), v.item()) for _, u, v in comp_g_path]
+        paths.append(path)
     return paths
 
 
@@ -188,8 +185,6 @@ class PaGELink(nn.Module):
                  log=False):
         super(PaGELink, self).__init__()
         self.model = model
-        self.src_ntype = model.src_ntype
-        self.tgt_ntype = model.tgt_ntype
         
         self.lr = lr
         self.num_epochs = num_epochs
@@ -199,7 +194,7 @@ class PaGELink(nn.Module):
         
         self.all_loss = defaultdict(list)
 
-    def _init_masks(self, ghetero):
+    def _init_masks(self, ghomo):
         """Initialize the learnable edge mask.
 
         Parameters
@@ -212,14 +207,13 @@ class PaGELink(nn.Module):
         edge_mask_dict : dict
             key=`etype`, value=torch.nn.Parameter with size being the number of `etype` edges
         """
-        return get_edge_mask_dict(ghetero)
+        return get_edge_mask_dict(ghomo)
     
 
-    def _prune_graph(self, ghetero, prune_max_degree=-1, k_core=2, always_preserve=[]):
+    def _prune_graph(self, ghomo, prune_max_degree=-1, k_core=2, always_preserve=[]):
         # Prune edges by (optionally) removing edges of high degree nodes and extracting k-core
         # The pruning is computed on the homogeneous graph, i.e., ignoring node/edge types
-        ghomo = dgl.to_homogeneous(ghetero)
-        device = ghetero.device
+        device = ghomo.device
         ghomo.edata['eid_before_prune'] = torch.arange(ghomo.num_edges()).to(device)
         
         if prune_max_degree > 0:
@@ -236,26 +230,9 @@ class PaGELink(nn.Module):
                 pruned_ghomo = ghomo
             else:
                 pruned_ghomo = k_core_ghomo
-        
-        pruned_ghomo_eids = pruned_ghomo.edata['eid_before_prune']
-        pruned_ghomo_eid_mask = torch.zeros(ghomo.num_edges()).bool()
-        pruned_ghomo_eid_mask[pruned_ghomo_eids] = True
 
-        # Apply the pruning result on the heterogeneous graph
-        etypes_to_pruned_ghetero_eid_masks = {}
-        pruned_ghetero = ghetero
-        cum_num_edges = 0
-        for etype in ghetero.canonical_etypes:
-            num_edges = ghetero.num_edges(etype=etype)
-            pruned_ghetero_eid_mask = pruned_ghomo_eid_mask[cum_num_edges:cum_num_edges+num_edges]
-            etypes_to_pruned_ghetero_eid_masks[etype] = pruned_ghetero_eid_mask
-
-            remove_ghetero_eids = (~ pruned_ghetero_eid_mask).nonzero().view(-1).to(device)
-            pruned_ghetero = dgl.remove_edges(pruned_ghetero, eids=remove_ghetero_eids, etype=etype)
-
-            cum_num_edges += num_edges
                 
-        return pruned_ghetero, etypes_to_pruned_ghetero_eid_masks
+        return pruned_ghomo
         
         
     def path_loss(self, src_nid, tgt_nid, g, eweights, num_paths=5):
@@ -313,7 +290,7 @@ class PaGELink(nn.Module):
     def get_edge_mask(self, 
                       src_nid, 
                       tgt_nid, 
-                      ghetero, 
+                      ghomo, 
                       feat_nids, 
                       prune_max_degree=-1,
                       k_core=2, 
@@ -333,30 +310,37 @@ class PaGELink(nn.Module):
         """
 
         self.model.eval()
-        device = ghetero.device
+        device = ghomo.device
         
-        ntype_hetero_nids_to_homo_nids = get_ntype_hetero_nids_to_homo_nids(ghetero)    
-        homo_src_nid = ntype_hetero_nids_to_homo_nids[(self.src_ntype, int(src_nid))]
-        homo_tgt_nid = ntype_hetero_nids_to_homo_nids[(self.tgt_ntype, int(tgt_nid))]
+        homo_src_nid = int(src_nid)
+        homo_tgt_nid = int(tgt_nid)
 
         # Get the initial prediction.
         with torch.no_grad():
-            score = self.model(src_nid, tgt_nid, ghetero, feat_nids)
-            pred = (score > 0).int().item()
+            # 모델을 사용하여 전체 그래프의 예측 수행
+            pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
+
+            # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
+            edge_index = torch.stack(ghomo.edges(), dim=0).cpu().numpy()
+            src_tgt_pair = np.array([src_nid, tgt_nid]).reshape(2, 1)
+
+            # edge_index에서 해당하는 예측값 찾기
+            mask = np.all(edge_index == src_tgt_pair, axis=0)
+            score = pred_all[mask][0]  # 해당 링크의 예측 점수
+
+            # 최종 예측값 변환
+            pred = (score > 0).astype(int)
 
         if prune_graph:
-            # The pruned graph for mask learning  
-            ml_ghetero, etypes_to_pruned_ghetero_eid_masks = self._prune_graph(ghetero, 
-                                                                               prune_max_degree,
-                                                                               k_core,
-                                                                               [homo_src_nid, homo_tgt_nid])
+            # Prune the graph and return a homogeneous subgraph
+            ml_ghomo = self._prune_graph(ghomo, prune_max_degree, k_core, [homo_src_nid, homo_tgt_nid])
         else:
-            # The original graph for mask learning  
-            ml_ghetero = ghetero
+            # Use the original homogeneous graph
+            ml_ghomo = ghomo
             
-        ml_edge_mask_dict = self._init_masks(ml_ghetero)
-        optimizer = torch.optim.Adam(ml_edge_mask_dict.values(), lr=self.lr)
-        
+        ml_edge_mask = self._init_masks(ml_ghomo) 
+        optimizer = torch.optim.Adam([ml_edge_mask], lr=self.lr)  
+        #######################################343 까지 수정 진행.
         if self.log:
             pbar = tqdm(total=self.num_epochs)
 
@@ -364,14 +348,12 @@ class PaGELink(nn.Module):
         EPS = 1e-3
         for e in range(self.num_epochs):    
             
-            # Apply sigmoid to edge_mask to get eweight
-            ml_eweight_dict = {etype: ml_edge_mask_dict[etype].sigmoid() for etype in ml_edge_mask_dict}
-        
-            score = self.model(src_nid, tgt_nid, ml_ghetero, feat_nids, ml_eweight_dict)
+
+            score = self.model(src_nid, tgt_nid, ml_ghetero, feat_nids, ml_edge_mask.sigmoid())
             pred_loss = (-1) ** pred * score.sigmoid().log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
-            ml_ghetero.edata['eweight'] = ml_eweight_dict
+            ml_ghetero.edata['eweight'] = ml_edge_mask.sigmoid()
             ml_ghomo = dgl.to_homogeneous(ml_ghetero, edata=['eweight'])
             ml_ghomo_eweights = ml_ghomo.edata['eweight']
             
@@ -441,8 +423,8 @@ class PaGELink(nn.Module):
             each list contains (cannonical edge type, source node ids, target node ids)
         """
         ntype_pairs_to_cannonical_etypes = get_ntype_pairs_to_cannonical_etypes(ghetero)
-        eweight_dict = {etype: edge_mask_dict[etype].sigmoid() for etype in edge_mask_dict}
-        ghetero.edata['eweight'] = eweight_dict
+        eweight = edge_mask_dict.sigmoid()
+        ghetero.edata['eweight'] = eweight
 
         # convert ghetero to ghomo and find paths
         ghomo = dgl.to_homogeneous(ghetero, edata=['eweight'])
@@ -474,7 +456,7 @@ class PaGELink(nn.Module):
 
         else:
             # A rare case, no paths found, take the top edges
-            cat_edge_mask = torch.cat([v for v in edge_mask_dict.values()])
+            cat_edge_mask = edge_mask_dict 
             M = len(cat_edge_mask)
             k = min(num_paths * max_path_length, M)
             threshold = cat_edge_mask.topk(k)[0][-1].item()
@@ -548,9 +530,7 @@ class PaGELink(nn.Module):
         (comp_g_src_nid, 
          comp_g_tgt_nid, 
          comp_g, 
-         comp_g_feat_nids) = hetero_src_tgt_khop_in_subgraph(self.src_ntype, 
-                                                             src_nid, 
-                                                             self.tgt_ntype, 
+         comp_g_feat_nids) = src_tgt_khop_in_subgraph(       src_nid, 
                                                              tgt_nid, 
                                                              ghetero, 
                                                              num_hops)

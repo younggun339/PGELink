@@ -112,12 +112,10 @@ class GRNGNN(nn.Module):
 
         # encode 단계
         z = self.encode(x, edge_index, self.af_val)
-        print(f"Net forward x.shape : {x.shape}")
-        print(f"Net forward edge_index.shape : {edge_index.shape}")
+
         # decode 단계
         out = self.decode(z, self.edge_label_index, dec)
-        print(f"Net forward z : {z.shape}")
-        print(f"Net forward self.edge_label_index.shape : {self.edge_label_index.shape}")
+
         return out
 
 
@@ -157,10 +155,6 @@ def train_link_predictor(
 
         val_auc,precision, recall,fpr, tpr, mcc, jac_score, cohkap_score, f1, top_k = eval_link_predictor(model, val_data,af_val,dec)
     
-    print(f"train_link_predictor x.shape : {train_data.x.shape}")
-    print(f"train_link_predictor edge_index.shape : {train_data.edge_index.shape}")
-    print(f"train_link_predictor z : {z.shape}")
-    print(f"train_link_predictor edge_label_index.shape : {edge_label_index.shape}")
     return model
 
 

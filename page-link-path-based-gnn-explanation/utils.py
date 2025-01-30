@@ -327,7 +327,43 @@ def hetero_src_tgt_khop_in_subgraph(src_ntype, src_nid, tgt_ntype, tgt_nid, ghet
     
     return sghetero_src_nid, sghetero_tgt_nid, sghetero, sghetero_feat_nid
 
+############
+def src_tgt_khop_in_subgraph(src_nid, tgt_nid, ghomo, k):
+    """
+    동질 그래프에서 특정 src, tgt 노드를 중심으로 k-hop 서브그래프를 추출하는 함수.
 
+    Parameters
+    ----------
+    src_nid : int
+        소스 노드 ID
+    tgt_nid : int
+        타겟 노드 ID
+    ghomo : dgl.DGLGraph
+        동질 그래프 (homogeneous graph)
+    k : int
+        Number of hops (k-hop)
+
+    Returns
+    -------
+    subgraph : DGLGraph
+        k-hop 서브그래프
+    subgraph_src_nid : int
+        서브그래프 내에서 매핑된 소스 노드 ID
+    subgraph_tgt_nid : int
+        서브그래프 내에서 매핑된 타겟 노드 ID
+    subgraph_feat_nid : Tensor
+        원본 그래프 노드 ID 정보
+    """
+    # k-hop 서브그래프 생성
+    subgraph, inv_map = dgl.khop_in_subgraph(ghomo, torch.tensor([src_nid, tgt_nid]), k)
+
+    # 서브그래프 내 노드 인덱스 가져오기
+    subgraph_src_nid = inv_map[0]
+    subgraph_tgt_nid = inv_map[1]
+    subgraph_feat_nid = subgraph.ndata[dgl.NID]
+
+    return subgraph_src_nid, subgraph_tgt_nid, subgraph, subgraph_feat_nid
+##########################
 '''
 Path finding utils
 '''
