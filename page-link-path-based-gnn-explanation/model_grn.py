@@ -198,8 +198,11 @@ def get_node_features(mp_g):
     DGL 그래프에서 모든 노드 속성을 하나의 feature matrix로 변환하는 함수
     """
     node_feats = []
+   
     for key in mp_g.ndata.keys():  # 모든 노드 속성 가져오기
-        feat = mp_g.ndata[key].float()  # Float 타입 변환
+        if key == "_ID":
+            continue  # '_ID' 무시
+        feat = mp_g.ndata[key].float()
         node_feats.append(feat)
    # 1D 텐서(예: [N])는 2D 텐서(예: [N, 1])로 변환
     node_feats = [feat.unsqueeze(1) if feat.dim() == 1 else feat for feat in node_feats]
@@ -216,6 +219,7 @@ def get_edge_features(mp_g):
         feat = mp_g.edata[key].float()
         edge_feats.append(feat)
     
+
     return torch.cat(edge_feats, dim=1) if edge_feats else None  # 엣지 특징이 없을 수도 있음
 
 
