@@ -407,8 +407,8 @@ class PaGELink(nn.Module):
     def get_paths(self,
                   src_nid, 
                   tgt_nid, 
-                  ghetero,
-                  edge_mask_dict,
+                  ghomo,
+                  edge_mask,
                   num_paths=1, 
                   max_path_length=3):
 
@@ -426,15 +426,15 @@ class PaGELink(nn.Module):
         paths: list of lists
             each list contains (cannonical edge type, source node ids, target node ids)
         """
-        ntype_pairs_to_cannonical_etypes = get_ntype_pairs_to_cannonical_etypes(ghetero)
-        eweight = edge_mask_dict.sigmoid()
-        ghetero.edata['eweight'] = eweight
+    
+        eweight = edge_mask.sigmoid()
+        ghomo.edata['eweight'] = eweight
 
         # convert ghetero to ghomo and find paths
-        ghomo = dgl.to_homogeneous(ghetero, edata=['eweight'])
-        ntype_hetero_nids_to_homo_nids = get_ntype_hetero_nids_to_homo_nids(ghetero)    
-        homo_src_nid = ntype_hetero_nids_to_homo_nids[(self.src_ntype, int(src_nid))]
-        homo_tgt_nid = ntype_hetero_nids_to_homo_nids[(self.tgt_ntype, int(tgt_nid))]
+       
+
+        homo_src_nid = int(src_nid)
+        homo_tgt_nid = int(tgt_nid)
 
         neg_path_score_func = get_neg_path_score_func(ghomo, 'eweight', [src_nid.item(), tgt_nid.item()])
         homo_paths = k_shortest_paths_with_max_length(ghomo, 
@@ -444,38 +444,14 @@ class PaGELink(nn.Module):
                                                        k=num_paths,
                                                        max_length=max_path_length)
 
-        paths = []
-        homo_nids_to_ntype_hetero_nids = get_homo_nids_to_ntype_hetero_nids(ghetero)
+        paths = [homo_paths]
     
-        if len(homo_paths) > 0:
-            for homo_path in homo_paths:
-                hetero_path = []
-                for i in range(1, len(homo_path)):
-                    homo_u, homo_v = homo_path[i-1], homo_path[i]
-                    hetero_u_ntype, hetero_u_nid = homo_nids_to_ntype_hetero_nids[homo_u] 
-                    hetero_v_ntype, hetero_v_nid = homo_nids_to_ntype_hetero_nids[homo_v] 
-                    can_etype = ntype_pairs_to_cannonical_etypes[(hetero_u_ntype, hetero_v_ntype)]    
-                    hetero_path += [(can_etype, hetero_u_nid, hetero_v_nid)]
-                paths += [hetero_path]
-
-        else:
-            # A rare case, no paths found, take the top edges
-            cat_edge_mask = edge_mask_dict 
-            M = len(cat_edge_mask)
-            k = min(num_paths * max_path_length, M)
-            threshold = cat_edge_mask.topk(k)[0][-1].item()
-            path = []
-            for etype in edge_mask_dict:
-                u, v = ghetero.edges(etype=etype)  
-                topk_edge_mask = edge_mask_dict[etype] >= threshold
-                path += list(zip([etype] * topk_edge_mask.sum().item(), u[topk_edge_mask].tolist(), v[topk_edge_mask].tolist()))                
-            paths = [path]
         return paths
     
     def explain(self,  
                 src_nid, 
                 tgt_nid, 
-                ghetero,
+                ghomo,
                 num_hops=2,
                 prune_max_degree=-1,
                 k_core=2, 
@@ -536,10 +512,10 @@ class PaGELink(nn.Module):
          comp_g, 
          comp_g_feat_nids) = src_tgt_khop_in_subgraph(       src_nid, 
                                                              tgt_nid, 
-                                                             ghetero, 
+                                                             ghomo, 
                                                              num_hops)
         # Learn the edge mask on the computation graph
-        comp_g_edge_mask_dict = self.get_edge_mask(comp_g_src_nid, 
+        comp_g_edge_mask = self.get_edge_mask(comp_g_src_nid, 
                                                    comp_g_tgt_nid, 
                                                    comp_g, 
                                                    comp_g_feat_nids,
@@ -552,7 +528,7 @@ class PaGELink(nn.Module):
         comp_g_paths = self.get_paths(comp_g_src_nid,
                                       comp_g_tgt_nid, 
                                       comp_g, 
-                                      comp_g_edge_mask_dict, 
+                                      comp_g_edge_mask, 
                                       num_paths, 
                                       max_path_length)    
         
@@ -562,7 +538,7 @@ class PaGELink(nn.Module):
         
         if return_mask:
             # return masks for easier evaluation
-            return paths, comp_g_edge_mask_dict
+            return paths, comp_g_edge_mask
         else:
             return paths 
 
