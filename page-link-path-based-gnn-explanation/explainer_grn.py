@@ -231,8 +231,12 @@ class PaGELink(nn.Module):
             else:
                 pruned_ghomo = k_core_ghomo
 
-                
-        return pruned_ghomo
+         # Pruning된 엣지 마스크 생성
+        pruned_ghomo_eids = pruned_ghomo.edata['eid_before_prune']
+        pruned_ghomo_eid_mask = torch.zeros(ghomo.num_edges(), dtype=torch.bool, device=device)
+        pruned_ghomo_eid_mask[pruned_ghomo_eids] = True  # pruning되지 않은 엣지만 True
+
+        return pruned_ghomo, pruned_ghomo_eid_mask
         
         
     def path_loss(self, src_nid, tgt_nid, g, eweights, num_paths=5):
@@ -333,7 +337,7 @@ class PaGELink(nn.Module):
 
         if prune_graph:
             # Prune the graph and return a homogeneous subgraph
-            ml_ghomo = self._prune_graph(ghomo, prune_max_degree, k_core, [homo_src_nid, homo_tgt_nid])
+            ml_ghomo, pruned_ghomo_eid_mask = self._prune_graph(ghomo, prune_max_degree, k_core, [homo_src_nid, homo_tgt_nid])
         else:
             # Use the original homogeneous graph
             ml_ghomo = ghomo
@@ -347,28 +351,31 @@ class PaGELink(nn.Module):
         eweight_norm = 0
         EPS = 1e-3
         for e in range(self.num_epochs):    
-            
+            # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
+            pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
 
-            score = self.model(src_nid, tgt_nid, ml_ghetero, feat_nids, ml_edge_mask.sigmoid())
+            # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
+            edge_index = torch.stack(ml_ghomo.edges(), dim=0).cpu().numpy()
+            src_tgt_pair = np.array([src_nid, tgt_nid]).reshape(2, 1)
+
+            # edge_index에서 해당하는 예측값 찾기
+            mask = np.all(edge_index == src_tgt_pair, axis=0)
+            score = pred_all[mask][0]  # 해당 링크의 예측 점수
+
+            # 예측 손실 계산
             pred_loss = (-1) ** pred * score.sigmoid().log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
-            ml_ghetero.edata['eweight'] = ml_edge_mask.sigmoid()
-            ml_ghomo = dgl.to_homogeneous(ml_ghetero, edata=['eweight'])
+            # 엣지 가중치 가져오기
             ml_ghomo_eweights = ml_ghomo.edata['eweight']
-            
-            # Check for early stop
-            curr_eweight_norm = ml_ghomo_eweights.norm()
-            if abs(eweight_norm - curr_eweight_norm) < EPS:
-                break
-            eweight_norm = curr_eweight_norm
-            
-            # Update with path loss
+
+            # Path loss 추가
             if with_path_loss:
                 path_loss = self.path_loss(homo_src_nid, homo_tgt_nid, ml_ghomo, ml_ghomo_eweights)
-            else: 
+            else:
                 path_loss = 0
-            
+
+            # 최종 손실 계산
             loss = pred_loss + path_loss
             
             optimizer.zero_grad()
@@ -383,22 +390,19 @@ class PaGELink(nn.Module):
         if self.log:
             pbar.close()
 
-        edge_mask_dict_placeholder = self._init_masks(ghetero)
-        edge_mask_dict = {}
-        
+            # 동질 그래프 기반으로 엣지 마스크 초기화
+        edge_mask = self._init_masks(ml_ghomo)
+
         if prune_graph:
-            # remove pruned edges
-            for etype in ghetero.canonical_etypes:
-                edge_mask = edge_mask_dict_placeholder[etype].data + float('-inf')    
-                pruned_ghetero_eid_mask = etypes_to_pruned_ghetero_eid_masks[etype]
-                edge_mask[pruned_ghetero_eid_mask] = ml_edge_mask_dict[etype]
-                edge_mask_dict[etype] = edge_mask
-                
+            # Pruned된 엣지 제외 (동질 그래프 기준으로 필터링)
+            pruned_eid_mask = pruned_ghomo_eid_mask  # 기존 etypes별 마스크가 아닌, 단일 마스크
+            edge_mask = torch.full_like(ml_edge_mask, float('-inf')) 
+            edge_mask[pruned_eid_mask] = ml_edge_mask
         else:
-            edge_mask_dict = ml_edge_mask_dict
-    
-        edge_mask_dict = {k : v.detach() for k, v in edge_mask_dict.items()}
-        return edge_mask_dict    
+            edge_mask = ml_edge_mask  # 동질 그래프에서는 바로 사용 가능
+
+        # detach() 후 반환
+        return edge_mask.detach()
 
     def get_paths(self,
                   src_nid, 
