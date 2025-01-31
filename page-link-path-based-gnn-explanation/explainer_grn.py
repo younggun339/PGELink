@@ -182,7 +182,8 @@ class PaGELink(nn.Module):
                  num_epochs=100,
                  alpha=1.0,
                  beta=1.0,
-                 log=False):
+                 log=False,
+                 af_val="F.silu"):
         super(PaGELink, self).__init__()
         self.model = model
         
@@ -191,6 +192,7 @@ class PaGELink(nn.Module):
         self.alpha = alpha
         self.beta = beta
         self.log = log
+        self.af_val = af_val
         
         self.all_loss = defaultdict(list)
 

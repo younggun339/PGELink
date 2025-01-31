@@ -8,7 +8,7 @@ from pathlib import Path
 from utils import set_seed, print_args, set_config_args
 from model_grn import GRNGNN, prediction_dgl
 from data_grn_processing import load_grn_dataset, load_grn_dataset_dgl
-from explainer import PaGELink
+from explainer_grn import PaGELink
 
 
 # DGL 그래프에서 feature dimension 가져오기 (feat이 아닌 모든 ndata 속성 사용)
@@ -125,7 +125,8 @@ pagelink = PaGELink(model,
                     alpha=args.alpha, 
                     beta=args.beta, 
                     num_epochs=args.num_epochs,
-                    log=True).to(device)
+                    log=True,
+                    af_val=args.af_val).to(device)
 
 # 예측 실행
 with torch.no_grad():
@@ -142,7 +143,10 @@ if args.max_num_samples > 0:
 
 for i in tqdm(test_ids):
     src_nid, tgt_nid = test_src_nids[i].unsqueeze(0), test_tgt_nids[i].unsqueeze(0)
-    
+     # 현재 텐서의 device 확인 (GPU 사용 가능 여부에 따라 이동)
+    device = test_src_nids.device  # test_src_nids의 device를 기준으로 설정
+
+    src_nid, tgt_nid = src_nid.to(device), tgt_nid.to(device) 
     if edge_predictions[i] == 1:
         src_tgt = (int(src_nid), int(tgt_nid))  # 순수 노드 ID만 저장
         # PaGE-Link로 설명 생성

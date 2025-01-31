@@ -354,8 +354,12 @@ def src_tgt_khop_in_subgraph(src_nid, tgt_nid, ghomo, k):
     subgraph_feat_nid : Tensor
         원본 그래프 노드 ID 정보
     """
+    device = ghomo.device
+    print(f"ghomo device: {device}")
+
+    src_tgt_tensor = torch.tensor([src_nid, tgt_nid], device=device) 
     # k-hop 서브그래프 생성
-    subgraph, inv_map = dgl.khop_in_subgraph(ghomo, torch.tensor([src_nid, tgt_nid]), k)
+    subgraph, inv_map = dgl.khop_in_subgraph(ghomo,src_tgt_tensor, k)
 
     # 서브그래프 내 노드 인덱스 가져오기
     subgraph_src_nid = inv_map[0]

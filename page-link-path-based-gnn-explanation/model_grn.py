@@ -201,6 +201,8 @@ def get_node_features(mp_g):
     for key in mp_g.ndata.keys():  # 모든 노드 속성 가져오기
         feat = mp_g.ndata[key].float()  # Float 타입 변환
         node_feats.append(feat)
+   # 1D 텐서(예: [N])는 2D 텐서(예: [N, 1])로 변환
+    node_feats = [feat.unsqueeze(1) if feat.dim() == 1 else feat for feat in node_feats]
     
     return torch.cat(node_feats, dim=1)  # 모든 feature concat
 
