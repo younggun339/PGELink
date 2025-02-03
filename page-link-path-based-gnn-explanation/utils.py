@@ -391,11 +391,18 @@ def get_neg_path_score_func(g, weight, exclude_node=[]):
        Takes in two node ids and return the edge weight. 
     '''
     log_eweights = g.edata[weight].log().squeeze(-1).tolist()
+    if isinstance(log_eweights, float):  # 단일 값일 경우
+        log_eweights = [log_eweights]  # 리스트로 변환
+
     
     log_in_degrees = g.in_degrees().log()
     log_in_degrees[exclude_node] = 0
     log_in_degrees = log_in_degrees.tolist()
     u, v = g.edges()
+    # if log_eweights is None:
+    #     raise ValueError("log_eweights is None. Check the variable assignment.")
+    # print(f"Length of log_eweights: {len(log_eweights)}")
+    # print(f"Length of (u, v) pairs: {len(list(zip(u.tolist(), v.tolist())))}")
     neg_path_score_map = {edge : log_in_degrees[edge[1]] - log_eweights[i] for i, edge in enumerate(zip(u.tolist(), v.tolist()))}
 
     def neg_path_score_func(u, v):
