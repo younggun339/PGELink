@@ -390,7 +390,8 @@ def get_neg_path_score_func(g, weight, exclude_node=[]):
     neg_path_score_func: callable function
        Takes in two node ids and return the edge weight. 
     '''
-    log_eweights = g.edata[weight].log().tolist()
+    log_eweights = g.edata[weight].log().squeeze(-1).tolist()
+    
     log_in_degrees = g.in_degrees().log()
     log_in_degrees[exclude_node] = 0
     log_in_degrees = log_in_degrees.tolist()
