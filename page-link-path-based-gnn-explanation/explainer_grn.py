@@ -326,13 +326,18 @@ class PaGELink(nn.Module):
             # 모델을 사용하여 전체 그래프의 예측 수행
             pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
 
+
+            # 예측 결과를 Positive와 Negative로 분리
+            pos_pred_all = pred_all[:18]  # Positive Edges 예측값
+            neg_pred_all = pred_all[18:]  # Negative Edges 예측값
+
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
             edge_index = torch.stack(ghomo.edges(), dim=0).cpu().numpy()
-            src_tgt_pair = np.array([src_nid, tgt_nid]).reshape(2, 1)
+            src_tgt_pair = np.array([src_nid.cpu().numpy(), tgt_nid.cpu().numpy()]).reshape(2, 1)
 
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
-            score = pred_all[mask][0]  # 해당 링크의 예측 점수
+            score = pos_pred_all[mask][0]   # 해당 링크의 예측 점수
 
             # 최종 예측값 변환
             pred = (score > 0).astype(int)
@@ -346,7 +351,7 @@ class PaGELink(nn.Module):
             
         ml_edge_mask = self._init_masks(ml_ghomo) 
         optimizer = torch.optim.Adam([ml_edge_mask], lr=self.lr)  
-        #######################################343 까지 수정 진행.
+ 
         if self.log:
             pbar = tqdm(total=self.num_epochs)
 
@@ -356,13 +361,18 @@ class PaGELink(nn.Module):
             # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
             pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
 
+
+            # 예측 결과를 Positive와 Negative로 분리
+            pos_pred_all = pred_all[:18]  # Positive Edges 예측값
+            neg_pred_all = pred_all[18:]  # Negative Edges 예측값
+
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
             edge_index = torch.stack(ml_ghomo.edges(), dim=0).cpu().numpy()
             src_tgt_pair = np.array([src_nid, tgt_nid]).reshape(2, 1)
 
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
-            score = pred_all[mask][0]  # 해당 링크의 예측 점수
+            score = pos_pred_all[mask][0]  # 해당 링크의 예측 점수
 
             # 예측 손실 계산
             pred_loss = (-1) ** pred * score.sigmoid().log()
