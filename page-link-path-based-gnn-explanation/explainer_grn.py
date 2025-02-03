@@ -327,9 +327,13 @@ class PaGELink(nn.Module):
             pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
 
 
-            # 예측 결과를 Positive와 Negative로 분리
-            pos_pred_all = pred_all[:18]  # Positive Edges 예측값
-            neg_pred_all = pred_all[18:]  # Negative Edges 예측값
+                    # 전체 예측값 개수 확인
+            num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
+
+            # Positive와 Negative를 동적으로 나누기
+            pos_pred_all = pred_all[:num_edges]
+            neg_pred_all = pred_all[num_edges:]
+
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
             edge_index = torch.stack(ghomo.edges(), dim=0).cpu().numpy()
@@ -361,17 +365,21 @@ class PaGELink(nn.Module):
             # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
             pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
 
+            # 전체 예측값 개수 확인
+            num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
 
-            # 예측 결과를 Positive와 Negative로 분리
-            pos_pred_all = pred_all[:18]  # Positive Edges 예측값
-            neg_pred_all = pred_all[18:]  # Negative Edges 예측값
+            # Positive와 Negative를 동적으로 나누기
+            pos_pred_all = pred_all[:num_edges]
+            neg_pred_all = pred_all[num_edges:]
+
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
             edge_index = torch.stack(ml_ghomo.edges(), dim=0).cpu().numpy()
-            src_tgt_pair = np.array([src_nid, tgt_nid]).reshape(2, 1)
+            src_tgt_pair = np.array([src_nid.cpu().numpy(), tgt_nid.cpu().numpy()]).reshape(2, 1)
 
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
+
             score = pos_pred_all[mask][0]  # 해당 링크의 예측 점수
 
             # 예측 손실 계산
