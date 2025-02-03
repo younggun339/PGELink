@@ -383,7 +383,7 @@ class PaGELink(nn.Module):
             score = pos_pred_all[mask][0]  # 해당 링크의 예측 점수
 
             # 예측 손실 계산
-            pred_loss = (-1) ** pred * score.sigmoid().log()
+            pred_loss = (-1) ** pred * torch.sigmoid(torch.tensor(score)).log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
             # 엣지 가중치 가져오기
