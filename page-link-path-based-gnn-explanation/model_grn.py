@@ -241,6 +241,10 @@ def prediction_dgl(model, mp_g, af_val, dec):
         method='sparse'
     ).to(device)
 
+    print("Number of positive edges:", edge_index.shape[1])
+    print("Number of negative edges:", neg_edge_index.shape[1])
+
+
     # edge_label_index 및 label 생성
     edge_label_index = torch.cat([edge_index, neg_edge_index], dim=-1).to(device)
     edge_label = torch.cat([

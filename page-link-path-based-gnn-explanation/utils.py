@@ -355,7 +355,6 @@ def src_tgt_khop_in_subgraph(src_nid, tgt_nid, ghomo, k):
         원본 그래프 노드 ID 정보
     """
     device = ghomo.device
-    print(f"ghomo device: {device}")
 
     src_tgt_tensor = torch.tensor([src_nid, tgt_nid], device=device) 
     # k-hop 서브그래프 생성
@@ -399,10 +398,7 @@ def get_neg_path_score_func(g, weight, exclude_node=[]):
     log_in_degrees[exclude_node] = 0
     log_in_degrees = log_in_degrees.tolist()
     u, v = g.edges()
-    # if log_eweights is None:
-    #     raise ValueError("log_eweights is None. Check the variable assignment.")
-    # print(f"Length of log_eweights: {len(log_eweights)}")
-    # print(f"Length of (u, v) pairs: {len(list(zip(u.tolist(), v.tolist())))}")
+
     neg_path_score_map = {edge : log_in_degrees[edge[1]] - log_eweights[i] for i, edge in enumerate(zip(u.tolist(), v.tolist()))}
 
     def neg_path_score_func(u, v):

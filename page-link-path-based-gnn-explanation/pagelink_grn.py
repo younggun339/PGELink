@@ -109,8 +109,6 @@ set_seed(0)
 processed_g = load_grn_dataset_dgl(args.dataset_dir, args.dataset_name, args.valid_ratio, args.test_ratio)[1]
 mp_g, train_pos_g, train_neg_g, val_pos_g, val_neg_g, test_pos_g, test_neg_g = [g.to(device) for g in processed_g]
 
-# DGL 그래프에서 feature dimension 가져오기
-print(f"pagelink_grn.py mp_g : {mp_g}")
 try:
     in_dim = get_in_dim(mp_g)
 except KeyError:
@@ -121,7 +119,6 @@ model = GRNGNN(in_dim, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.d
 state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='cuda')
 model.load_state_dict(state) 
 
-print(f"pagelink_grn.py in_dim : {in_dim}")
 
 pagelink = PaGELink(model, 
                     lr=args.lr,

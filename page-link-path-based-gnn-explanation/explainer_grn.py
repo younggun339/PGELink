@@ -232,7 +232,6 @@ class PaGELink(nn.Module):
         pruned_ghomo_eids = pruned_ghomo.edata['eid_before_prune']
         pruned_ghomo_eid_mask = torch.zeros(ghomo.num_edges(), dtype=torch.bool, device=device)
         pruned_ghomo_eid_mask[pruned_ghomo_eids] = True  # pruning되지 않은 엣지만 True
-        print("pruned_ghomo_eids:", pruned_ghomo_eids.tolist())
         return pruned_ghomo, pruned_ghomo_eid_mask
         
         
@@ -318,9 +317,11 @@ class PaGELink(nn.Module):
 
         # Get the initial prediction.
         with torch.no_grad():
+            print()
             # 모델을 사용하여 전체 그래프의 예측 수행
             pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
-
+            print("pred_all :", pred_all)
+            print("ghomo.edges(): ", len(ghomo.edges()[0]))
 
                     # 전체 예측값 개수 확인
             num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
@@ -336,14 +337,16 @@ class PaGELink(nn.Module):
 
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
+            print("Number of matching edges:", mask.sum())
+
+            print("mask shape:", mask.shape)
+            print("pos_pred_all shape:", pos_pred_all.shape)
             score = pos_pred_all[mask][0]   # 해당 링크의 예측 점수
 
             # 최종 예측값 변환
             pred = (score > 0).astype(int)
 
 
-        print(ghomo.edata.keys())  # eweight가 있는지 확인
-        print(ghomo.num_edges())
 
         if prune_graph:
             # Prune the graph and return a homogeneous subgraph
@@ -355,9 +358,6 @@ class PaGELink(nn.Module):
         ml_edge_mask = self._init_masks(ml_ghomo) 
         optimizer = torch.optim.Adam([ml_edge_mask], lr=self.lr)  
 
-        print(f"ml_ghomo.edges() : {len(ml_ghomo.edges()[0])}")
-        print(f"pruned_ghomo_eid_mask.shape : {pruned_ghomo_eid_mask.shape}")
- 
         if self.log:
             pbar = tqdm(total=self.num_epochs)
 
