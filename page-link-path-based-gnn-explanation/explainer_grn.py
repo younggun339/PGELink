@@ -346,6 +346,10 @@ class PaGELink(nn.Module):
             # 최종 예측값 변환
             pred = (score > 0).astype(int)
 
+
+        print(ghomo.edata.keys())  # eweight가 있는지 확인
+        print(ghomo.num_edges())
+
         if prune_graph:
             # Prune the graph and return a homogeneous subgraph
             ml_ghomo, pruned_ghomo_eid_mask = self._prune_graph(ghomo, prune_max_degree, k_core, [homo_src_nid, homo_tgt_nid])
@@ -386,6 +390,7 @@ class PaGELink(nn.Module):
             pred_loss = (-1) ** pred * torch.sigmoid(torch.tensor(score)).log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
+            ml_ghomo.edata['eweight'] = ml_ghomo.edata['KD'].float() + ml_ghomo.edata['KO'].float()
             # 엣지 가중치 가져오기
             ml_ghomo_eweights = ml_ghomo.edata['eweight']
 
