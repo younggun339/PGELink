@@ -237,7 +237,7 @@ class PaGELink(nn.Module):
         pruned_ghomo_eids = pruned_ghomo.edata['eid_before_prune']
         pruned_ghomo_eid_mask = torch.zeros(ghomo.num_edges(), dtype=torch.bool, device=device)
         pruned_ghomo_eid_mask[pruned_ghomo_eids] = True  # pruning되지 않은 엣지만 True
-
+        print("pruned_ghomo_eids:", pruned_ghomo_eids.tolist())
         return pruned_ghomo, pruned_ghomo_eid_mask
         
         
@@ -359,6 +359,9 @@ class PaGELink(nn.Module):
             
         ml_edge_mask = self._init_masks(ml_ghomo) 
         optimizer = torch.optim.Adam([ml_edge_mask], lr=self.lr)  
+
+        print(f"ml_ghomo.edges() : {len(ml_ghomo.edges()[0])}")
+        print(f"pruned_ghomo_eid_mask.shape : {pruned_ghomo_eid_mask.shape}")
  
         if self.log:
             pbar = tqdm(total=self.num_epochs)
@@ -426,7 +429,8 @@ class PaGELink(nn.Module):
         if prune_graph:
             # Pruned된 엣지 제외 (동질 그래프 기준으로 필터링)
             pruned_eid_mask = pruned_ghomo_eid_mask  # 기존 etypes별 마스크가 아닌, 단일 마스크
-            edge_mask = torch.full_like(ml_edge_mask, float('-inf')) 
+            edge_mask = torch.full_like(pruned_eid_mask, float('-inf'), dtype=torch.float) 
+
             edge_mask[pruned_eid_mask] = ml_edge_mask
         else:
             edge_mask = ml_edge_mask  # 동질 그래프에서는 바로 사용 가능
