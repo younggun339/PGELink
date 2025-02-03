@@ -134,12 +134,7 @@ def get_eids_on_paths(paths, ghomo):
     return torch.LongTensor(eids)
 
 def comp_g_paths_to_paths(comp_g, comp_g_paths):
-    paths = []
-    g_nids = comp_g.ndata[dgl.NID]
-    for comp_g_path in comp_g_paths:
-        path = [(u.item(), v.item()) for _, u, v in comp_g_path]
-        paths.append(path)
-    return paths
+    return comp_g_paths
 
 
 class PaGELink(nn.Module):
