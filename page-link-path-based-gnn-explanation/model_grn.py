@@ -238,6 +238,7 @@ def prediction_dgl(model, mp_g, af_val, dec):
     neg_edge_index = negative_sampling(
         edge_index=edge_index,
         num_nodes=mp_g.num_nodes(),
+        num_neg_samples=edge_index.shape[1],
         method='sparse'
     ).to(device)
 
@@ -258,8 +259,12 @@ def prediction_dgl(model, mp_g, af_val, dec):
     # 예측 (엣지 디코딩)
     out = model.decode(z, edge_label_index, dec).cpu().numpy()
 
+      # ✅ 기존 엣지에 해당하는 예측값만 추출 (첫 번째 half는 기존 엣지, 나머지는 negative 샘플)
+    num_edges = edge_index.shape[1]  # ✅ 원래 그래프의 엣지 수
+    pos_pred_all = out[:num_edges]   # ✅ 기존 엣지에 대한 예측값만 유지
+
+
     # 임계값 적용하여 binary classification
-    pred = (out > 0.5).astype(int)
-    print(pred)
+    pred = (pos_pred_all > 0.5).astype(int)
 
     return pred

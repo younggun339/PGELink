@@ -323,12 +323,12 @@ class PaGELink(nn.Module):
             print("pred_all :", pred_all)
             print("ghomo.edges(): ", len(ghomo.edges()[0]))
 
-                    # 전체 예측값 개수 확인
-            num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
+            #         # 전체 예측값 개수 확인
+            # num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
 
-            # Positive와 Negative를 동적으로 나누기
-            pos_pred_all = pred_all[:num_edges]
-            neg_pred_all = pred_all[num_edges:]
+            # # Positive와 Negative를 동적으로 나누기
+            # pos_pred_all = pred_all[:num_edges]
+            # neg_pred_all = pred_all[num_edges:]
 
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
@@ -339,9 +339,9 @@ class PaGELink(nn.Module):
             mask = np.all(edge_index == src_tgt_pair, axis=0)
             print("Number of matching edges:", mask.sum())
 
-            print("mask shape:", mask.shape)
-            print("pos_pred_all shape:", pos_pred_all.shape)
-            score = pos_pred_all[mask][0]   # 해당 링크의 예측 점수
+            # print("mask shape:", mask.shape)
+            # print("pos_pred_all shape:", pos_pred_all.shape)
+            score = pred_all[mask][0]   # 해당 링크의 예측 점수
 
             # 최종 예측값 변환
             pred = (score > 0).astype(int)
@@ -367,12 +367,12 @@ class PaGELink(nn.Module):
             # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
             pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
 
-            # 전체 예측값 개수 확인
-            num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
+            # # 전체 예측값 개수 확인
+            # num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
 
-            # Positive와 Negative를 동적으로 나누기
-            pos_pred_all = pred_all[:num_edges]
-            neg_pred_all = pred_all[num_edges:]
+            # # Positive와 Negative를 동적으로 나누기
+            # pos_pred_all = pred_all[:num_edges]
+            # neg_pred_all = pred_all[num_edges:]
 
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
@@ -383,11 +383,11 @@ class PaGELink(nn.Module):
             mask = np.all(edge_index == src_tgt_pair, axis=0)
 
                         # pos_pred_all이 numpy이면 텐서로 변환
-            if isinstance(pos_pred_all, np.ndarray):
-                pos_pred_all = torch.tensor(pos_pred_all, dtype=torch.float32, device=device, requires_grad=True)
+            if isinstance(pred_all, np.ndarray):
+                pred_all = torch.tensor(pred_all, dtype=torch.float32, device=device, requires_grad=True)
 
 
-            score = pos_pred_all[mask].to(dtype=torch.float32, device=device)[0]
+            score = pred_all[mask].to(dtype=torch.float32, device=device)[0]
 
             # 예측 손실 계산
             pred_loss = (-1) ** pred * torch.sigmoid(score).log()
