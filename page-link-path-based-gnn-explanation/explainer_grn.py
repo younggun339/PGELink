@@ -384,10 +384,15 @@ class PaGELink(nn.Module):
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
 
-            score = pos_pred_all[mask][0]  # 해당 링크의 예측 점수
+                        # pos_pred_all이 numpy이면 텐서로 변환
+            if isinstance(pos_pred_all, np.ndarray):
+                pos_pred_all = torch.tensor(pos_pred_all, dtype=torch.float32, device=device, requires_grad=True)
+
+
+            score = pos_pred_all[mask].to(dtype=torch.float32, device=device)[0]
 
             # 예측 손실 계산
-            pred_loss = (-1) ** pred * torch.sigmoid(torch.tensor(score)).log()
+            pred_loss = (-1) ** pred * torch.sigmoid(score).log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
             ml_ghomo.edata['eweight'] = ml_ghomo.edata['KD'].float() + ml_ghomo.edata['KO'].float()
