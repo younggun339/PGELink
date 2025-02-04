@@ -6,39 +6,50 @@ from collections import defaultdict
 from pathlib import Path
 from tqdm.auto import tqdm
 
-from data_processing import load_dataset
-from model import HeteroRGCN, HeteroLinkPredictionModel
+from data_grn_processing import load_grn_dataset_dgl
+from model_grn import GRNGNN, prediction_dgl
 from utils import set_config_args, get_comp_g_edge_labels, get_comp_g_path_labels
-from utils import hetero_src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit
+from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit
+
+
+# DGL 그래프에서 feature dimension 가져오기 (feat이 아닌 모든 ndata 속성 사용)
+def get_in_dim(mp_g):
+    """
+    DGL 그래프에서 모든 노드 feature의 총 차원을 계산하는 함수
+    """
+    node_feats = []
+    for key in mp_g.ndata.keys():  # 모든 노드 feature 속성 확인
+        feat = mp_g.ndata[key]  # 해당 feature 텐서 가져오기
+        if len(feat.shape) == 2:  # (num_nodes, feature_dim) 형태일 경우만 추가
+            node_feats.append(feat.shape[1])
+    
+    if not node_feats:
+        raise ValueError("No valid node features found in graph! Check ndata.")
+
+    return sum(node_feats)  # 모든 feature 차원을 더해서 총 in_dim 반환
+
+
 
 parser = argparse.ArgumentParser(description='Explain link predictor')
+parser.add_argument('--device_id', type=int, default=0)
 '''
 Dataset args
 '''
 parser.add_argument('--dataset_dir', type=str, default='datasets')
 parser.add_argument('--dataset_name', type=str, default='aug_citation')
-parser.add_argument('--valid_ratio', type=float, default=0.1) 
-parser.add_argument('--test_ratio', type=float, default=0.2)
+parser.add_argument('--valid_ratio', type=float, default=0.2) 
+parser.add_argument('--test_ratio', type=float, default=0.3)
 parser.add_argument('--max_num_samples', type=int, default=-1, 
                     help='maximum number of samples to explain, for fast testing. Use all if -1')
 
 '''
 GNN args
 '''
-parser.add_argument('--emb_dim', type=int, default=128)
-parser.add_argument('--hidden_dim', type=int, default=128)
-parser.add_argument('--out_dim', type=int, default=128)
+parser.add_argument('--hidden_dim_1', type=int, default=128)
+parser.add_argument('--hidden_dim_2', type=int, default=64)
+parser.add_argument('--out_dim', type=int, default=32)
 parser.add_argument('--saved_model_dir', type=str, default='saved_models')
 parser.add_argument('--saved_model_name', type=str, default='')
-
-'''
-Link predictor args
-'''
-parser.add_argument('--src_ntype', type=str, default='user', help='prediction source node type')
-parser.add_argument('--tgt_ntype', type=str, default='item', help='prediction target node type')
-parser.add_argument('--pred_etype', type=str, default='likes', help='prediction edge type')
-parser.add_argument('--link_pred_op', type=str, default='dot', choices=['dot', 'cos', 'ele', 'cat'],
-                   help='operation passed to dgl.EdgePredictor')
 
 '''
 Explanation args
@@ -52,36 +63,43 @@ parser.add_argument('--eval_path_hit', default=False, action='store_true',
                     help='Whether to save the explanation') 
 parser.add_argument('--config_path', type=str, default='', help='path of saved configuration args')
 
+
+
+
+parser.add_argument('--dec', type=str, default='dot_sum', choices=['dot', 'cos', 'ele', 'cat', 'dot_sum'],
+                   help='Edge predictor에서 사용할 디코딩 연산 방식')
+parser.add_argument('--af_val', type=str, default='F.silu', choices=['F.silu', 'F.sigmoid', 'F.tanh'],
+                   help='Edge predictor에서 사용할 활성화 함수')
+
+
 args = parser.parse_args()
+
+
+if torch.cuda.is_available() and args.device_id >= 0:
+    device = torch.device('cuda', index=args.device_id)
+else:
+    device = torch.device('cpu')
 
 if args.config_path:
     args = set_config_args(args, args.config_path, args.dataset_name, 'train_eval')
-
-if 'citation' in args.dataset_name:
-    args.src_ntype = 'author'
-    args.tgt_ntype = 'paper'
-
-elif 'synthetic' in args.dataset_name:
-    args.src_ntype = 'user'
-    args.tgt_ntype = 'item'    
     
-if args.link_pred_op in ['cat']:
-    pred_kwargs = {"in_feats": args.out_dim, "out_feats": 1}
-else:
-    pred_kwargs = {}
+try:
+    in_dim = get_in_dim(mp_g)
+except KeyError:
+    raise ValueError("Graph does not contain 'feat' in node features. Ensure features are properly assigned.")
 
-g, processed_g, pred_pair_to_edge_labels, pred_pair_to_path_labels = load_dataset(args.dataset_dir,
-                                                                                  args.dataset_name,
-                                                                                  args.valid_ratio,
-                                                                                  args.test_ratio)
+
+g, processed_g = load_grn_dataset_dgl(args.dataset_dir,
+                                        args.dataset_name,
+                                        args.valid_ratio,
+                                        args.test_ratio)
 mp_g, train_pos_g, train_neg_g, val_pos_g, val_neg_g, test_pos_g, test_neg_g = [g for g in processed_g]
-encoder = HeteroRGCN(mp_g, args.emb_dim, args.hidden_dim, args.out_dim)
-model = HeteroLinkPredictionModel(encoder, args.src_ntype, args.tgt_ntype, args.link_pred_op, **pred_kwargs)
+model = GRNGNN(in_dim, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
 
 if not args.saved_model_name:
     args.saved_model_name = f'{args.dataset_name}_model'
 
-state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='cpu')
+state = torch.load(f'{args.saved_model_dir}/{args.saved_model_name}.pth', map_location='cuda')
 model.load_state_dict(state)    
 
 test_src_nids, test_tgt_nids = test_pos_g.edges()
@@ -94,28 +112,14 @@ if args.max_num_samples > 0:
 for i in tqdm(test_ids):
     # Get the k-hop subgraph
     src_nid, tgt_nid = test_src_nids[i], test_tgt_nids[i]
-    comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids = hetero_src_tgt_khop_in_subgraph(args.src_ntype, 
-                                                                                               src_nid,
-                                                                                               args.tgt_ntype,
+    comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids = src_tgt_khop_in_subgraph( src_nid,
                                                                                                tgt_nid,
                                                                                                mp_g,
                                                                                                args.num_hops)
 
+
     with torch.no_grad():
-        pred = model(comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids).sigmoid().item() > 0.5
-
-    if pred:
-        src_tgt = ((args.src_ntype, int(src_nid)), (args.tgt_ntype, int(tgt_nid)))
-        comp_graphs[src_tgt] = [comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids]
-
-        # Get labels with subgraph nids and eids 
-        edge_labels = pred_pair_to_edge_labels[src_tgt]
-        comp_g_edge_labels = get_comp_g_edge_labels(comp_g, edge_labels)
-
-        path_labels = pred_pair_to_path_labels[src_tgt]
-        comp_g_path_labels = get_comp_g_path_labels(comp_g, path_labels)
-
-        comp_g_labels[src_tgt] = [comp_g_edge_labels, comp_g_path_labels]
+        pred = prediction_dgl(model, comp_g, args.af_val, args.dec)
 
 explanation_masks = {}
 for explainer in args.eval_explainer_names:
@@ -133,9 +137,8 @@ for explainer in args.eval_explainer_names:
     mask_auc_list = []
     for src_tgt in comp_graphs:
         comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids, = comp_graphs[src_tgt]
-        comp_g_edge_labels, comp_g_path_labels = comp_g_labels[src_tgt]
-        comp_g_edge_mask_dict = pred_edge_to_comp_g_edge_mask[src_tgt]
-        mask_auc = eval_edge_mask_auc(comp_g_edge_mask_dict, comp_g_edge_labels)
+        comp_g_edge_mask = pred_edge_to_comp_g_edge_mask[src_tgt]
+        mask_auc = eval_edge_mask_auc(comp_g_edge_mask)
         mask_auc_list += [mask_auc]
       
     avg_auc = np.mean(mask_auc_list)

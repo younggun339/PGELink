@@ -135,7 +135,6 @@ with torch.no_grad():
 pred_edge_to_comp_g_edge_mask = {}
 pred_edge_to_paths = {}
 
-
 test_src_nids, test_tgt_nids = test_pos_g.edges()
 test_ids = range(test_src_nids.shape[0])
 if args.max_num_samples > 0:

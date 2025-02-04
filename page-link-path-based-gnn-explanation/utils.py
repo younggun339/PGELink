@@ -838,6 +838,39 @@ def eval_edge_mask_auc(edge_mask_dict, edge_labels):
     
     return roc_auc_score(y_true, y_score) 
 
+
+############
+
+def eval_edge_mask_auc_grn(edge_mask_dict, edge_labels):
+    '''
+    Evaluate the AUC of an edge mask
+    
+    Parameters
+    ----------
+    edge_mask_dict: dict
+        key=edge type, value=a tensor of labels, each label is in (-inf, inf)
+
+    edge_labels: dict
+        key=edge type, value=a tensor of labels, each label is in {0, 1}
+
+    Returns
+    ----------
+    ROC-AUC score : int
+    '''
+    
+    y_true = []
+    y_score = []
+    for can_etype in edge_labels:
+        y_true += [edge_labels[can_etype]]
+        y_score += [edge_mask_dict[can_etype].detach().sigmoid()]
+
+    y_true = torch.cat(y_true)
+    y_score = torch.cat(y_score)
+    
+    return roc_auc_score(y_true, y_score) 
+
+##
+
 def eval_edge_mask_topk_path_hit(edge_mask_dict, path_labels, topks=[10]):
     '''
     Evaluate the path hit rate of the top k edges in an edge mask
