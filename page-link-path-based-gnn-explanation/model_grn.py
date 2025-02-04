@@ -238,12 +238,8 @@ def prediction_dgl(model, mp_g, af_val, dec):
     neg_edge_index = negative_sampling(
         edge_index=edge_index,
         num_nodes=mp_g.num_nodes(),
-        num_neg_samples=edge_index.shape[1],
         method='sparse'
     ).to(device)
-
-    print("Number of positive edges:", edge_index.shape[1])
-    print("Number of negative edges:", neg_edge_index.shape[1])
 
 
     # edge_label_index 및 label 생성

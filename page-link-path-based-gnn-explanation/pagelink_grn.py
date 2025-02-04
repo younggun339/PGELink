@@ -171,7 +171,7 @@ if args.save_explanation:
         
     saved_edge_explanation_file = f'pagelink_{args.saved_model_name}_pred_edge_to_comp_g_edge_mask'
     saved_path_explanation_file = f'pagelink_{args.saved_model_name}_pred_edge_to_paths'
-    pred_edge_to_comp_g_edge_mask = {edge: {k: v.cpu() for k, v in mask.items()} for edge, mask in pred_edge_to_comp_g_edge_mask.items()}
+    pred_edge_to_comp_g_edge_mask = {edge: mask.cpu() for edge, mask in pred_edge_to_comp_g_edge_mask.items()}
 
     saved_edge_explanation_path = Path.cwd().joinpath(args.saved_explanation_dir, saved_edge_explanation_file)
     with open(saved_edge_explanation_path, "wb") as f:

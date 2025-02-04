@@ -320,16 +320,6 @@ class PaGELink(nn.Module):
             print()
             # 모델을 사용하여 전체 그래프의 예측 수행
             pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
-            print("pred_all :", pred_all)
-            print("ghomo.edges(): ", len(ghomo.edges()[0]))
-
-            #         # 전체 예측값 개수 확인
-            # num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
-
-            # # Positive와 Negative를 동적으로 나누기
-            # pos_pred_all = pred_all[:num_edges]
-            # neg_pred_all = pred_all[num_edges:]
-
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
             edge_index = torch.stack(ghomo.edges(), dim=0).cpu().numpy()
@@ -337,10 +327,7 @@ class PaGELink(nn.Module):
 
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
-            print("Number of matching edges:", mask.sum())
 
-            # print("mask shape:", mask.shape)
-            # print("pos_pred_all shape:", pos_pred_all.shape)
             score = pred_all[mask][0]   # 해당 링크의 예측 점수
 
             # 최종 예측값 변환
@@ -366,13 +353,6 @@ class PaGELink(nn.Module):
         for e in range(self.num_epochs):    
             # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
             pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
-
-            # # 전체 예측값 개수 확인
-            # num_edges = len(pred_all) // 2  # 양수와 음수 엣지가 같다고 가정 (1:1 비율)
-
-            # # Positive와 Negative를 동적으로 나누기
-            # pos_pred_all = pred_all[:num_edges]
-            # neg_pred_all = pred_all[num_edges:]
 
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
