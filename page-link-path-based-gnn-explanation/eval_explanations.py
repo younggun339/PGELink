@@ -91,6 +91,23 @@ test_ids = range(test_src_nids.shape[0])
 if args.max_num_samples > 0:
     test_ids = test_ids[:args.max_num_samples]
 
+
+print("Type of pred_pair_to_edge_labels:", type(pred_pair_to_edge_labels))
+print("Type of pred_pair_to_path_labels:", type(pred_pair_to_path_labels))
+print("Length of pred_pair_to_edge_labels:", len(pred_pair_to_edge_labels))
+print("Length of pred_pair_to_path_labels:", len(pred_pair_to_path_labels))
+
+
+print("Sample keys in pred_pair_to_edge_labels:", list(pred_pair_to_edge_labels.keys())[:5])
+print("Sample keys in pred_pair_to_path_labels:", list(pred_pair_to_path_labels.keys())[:5])
+sample_key_edge = next(iter(pred_pair_to_edge_labels.keys()))
+sample_key_path = next(iter(pred_pair_to_path_labels.keys()))
+
+if isinstance(pred_pair_to_edge_labels[sample_key_edge], list):
+    print("First item in pred_pair_to_edge_labels:", pred_pair_to_edge_labels[sample_key_edge][:3])
+if isinstance(pred_pair_to_path_labels[sample_key_path], list):
+    print("First item in pred_pair_to_path_labels:", pred_pair_to_path_labels[sample_key_path][:3])
+
 for i in tqdm(test_ids):
     # Get the k-hop subgraph
     src_nid, tgt_nid = test_src_nids[i], test_tgt_nids[i]
@@ -103,6 +120,9 @@ for i in tqdm(test_ids):
 
     with torch.no_grad():
         pred = model(comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids).sigmoid().item() > 0.5
+
+
+
 
     if pred:
         src_tgt = ((args.src_ntype, int(src_nid)), (args.tgt_ntype, int(tgt_nid)))

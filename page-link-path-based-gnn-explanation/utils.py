@@ -810,6 +810,119 @@ def get_comp_g_path_labels(comp_g, path_labels):
         comp_g_path_labels += [comp_g_path]
     return comp_g_path_labels
 
+
+def get_comp_g_edge_labels_grn(comp_g, edge_labels):
+    """Turn `edge_labels` with node ids in the original graph to
+       `comp_g_edge_labels` with node ids in the computation graph.
+       For easier evaluation.
+
+    Parameters
+    ----------
+    comp_g : heterogeneous dgl graph
+        computation graph, with .ndata stores key dgl.NID
+    
+    edge_labels : dict
+        key=edge type, value=(source node ids, target node ids)
+   
+    Return
+    -------
+    comp_g_edge_labels: dict
+        key=edge type, value=a tensor of labels, each label is in {0, 1}
+    """
+    ntype_to_tensor_nids_to_comp_g_nids = {}
+    ntypes_to_comp_g_max_nids = {}
+    ntypes_to_nids = comp_g.ndata[dgl.NID]
+    for ntype in ntypes_to_nids.keys():
+        nids = ntypes_to_nids[ntype]
+        if nids.numel() > 0:
+            max_nid = nids.max().item()
+        else: 
+            max_nid = -1
+
+        ntypes_to_comp_g_max_nids[ntype] = max_nid
+
+        nids_to_comp_g_nids = torch.zeros(max_nid + 1).long() - 1
+        # The i-th entry will be the nid in comp_g for the i-th node in g
+        nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])
+        ntype_to_tensor_nids_to_comp_g_nids[ntype] = nids_to_comp_g_nids
+
+
+    comp_g_edge_labels = {}
+    for can_etype in edge_labels:
+        start_ntype, etype, end_ntype = can_etype
+        start_nids, end_nids = edge_labels[can_etype]
+        start_comp_g_max_nid, end_comp_g_max_nid = ntypes_to_comp_g_max_nids[start_ntype], ntypes_to_comp_g_max_nids[end_ntype]
+
+        # For edges in label but not in comp_g, exclude them
+        start_included_nid_mask = start_nids <= start_comp_g_max_nid
+        end_included_nid_mask = end_nids <= end_comp_g_max_nid
+        comp_g_included_nid_mask = end_included_nid_mask & start_included_nid_mask
+
+        start_nids = start_nids[comp_g_included_nid_mask]
+        end_nids = end_nids[comp_g_included_nid_mask]
+
+        comp_g_start_nids = ntype_to_tensor_nids_to_comp_g_nids[start_ntype][start_nids]
+        comp_g_end_nids = ntype_to_tensor_nids_to_comp_g_nids[end_ntype][end_nids]
+        comp_g_eids = comp_g.edge_ids(comp_g_start_nids.tolist(), comp_g_end_nids.tolist(), etype=etype)
+
+        num_edges = comp_g.num_edges(etype=can_etype)
+        comp_g_eid_mask = torch.zeros(num_edges)
+        comp_g_eid_mask[comp_g_eids] = 1
+
+        comp_g_edge_labels[can_etype] = comp_g_eid_mask
+
+    return comp_g_edge_labels    
+
+def get_comp_g_path_labels_grn(comp_g, path_labels):
+    """Turn `path_labels` with node ids in the original graph
+       `comp_g_path_labels` with node ids in the computation graph
+       For easier evaluation.
+
+    Parameters
+    ----------
+    comp_g : heterogeneous dgl graph
+        computation graph, with .ndata stores key dgl.NID
+    
+    path_labels : list of lists
+        Each list is a path, i.e., triples of 
+        (cannonical edge type, source node id, target node id)
+   
+    Returns
+    -------
+    comp_g_path_labels: list of lists
+        Each list is a path, i.e., tuples of (cannonical edge type, edge id)
+    """
+    ntype_to_tensor_nids_to_comp_g_nids = {}
+    ntypes_to_comp_g_max_nids = {}
+    ntypes_to_nids = comp_g.ndata[dgl.NID]
+    for ntype in ntypes_to_nids.keys():
+        nids = ntypes_to_nids[ntype]
+        if nids.numel() > 0:
+            max_nid = nids.max().item()
+        else: 
+            max_nid = -1
+
+        ntypes_to_comp_g_max_nids[ntype] = max_nid
+
+        nids_to_comp_g_nids = torch.zeros(max_nid + 1).long() - 1
+        # The i-th entry will be the nid in comp_g for the i-th node in g
+        nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])
+        ntype_to_tensor_nids_to_comp_g_nids[ntype] = nids_to_comp_g_nids
+
+    comp_g_path_labels = []
+    for path in path_labels:
+        comp_g_path = []
+        for can_etype, start_nid, end_nid in path:
+            start_ntype, etype, end_ntype = can_etype
+
+            comp_g_start_nid = ntype_to_tensor_nids_to_comp_g_nids[start_ntype][start_nid].item()
+            comp_g_end_nid = ntype_to_tensor_nids_to_comp_g_nids[end_ntype][end_nid].item()
+
+            comp_g_eid = comp_g.edge_ids(comp_g_start_nid, comp_g_end_nid, etype=can_etype)
+            comp_g_path += [(can_etype, comp_g_eid)]
+        comp_g_path_labels += [comp_g_path]
+    return comp_g_path_labels
+
 def eval_edge_mask_auc(edge_mask_dict, edge_labels):
     '''
     Evaluate the AUC of an edge mask
@@ -841,7 +954,7 @@ def eval_edge_mask_auc(edge_mask_dict, edge_labels):
 
 ############
 
-def eval_edge_mask_auc_grn(edge_mask_dict, edge_labels):
+def eval_edge_mask_auc_grn(edge_mask):
     '''
     Evaluate the AUC of an edge mask
     

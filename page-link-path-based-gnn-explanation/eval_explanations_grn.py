@@ -82,18 +82,18 @@ else:
 
 if args.config_path:
     args = set_config_args(args, args.config_path, args.dataset_name, 'train_eval')
-    
-try:
-    in_dim = get_in_dim(mp_g)
-except KeyError:
-    raise ValueError("Graph does not contain 'feat' in node features. Ensure features are properly assigned.")
-
 
 g, processed_g = load_grn_dataset_dgl(args.dataset_dir,
                                         args.dataset_name,
                                         args.valid_ratio,
                                         args.test_ratio)
 mp_g, train_pos_g, train_neg_g, val_pos_g, val_neg_g, test_pos_g, test_neg_g = [g for g in processed_g]
+
+try:
+    in_dim = get_in_dim(mp_g)
+except KeyError:
+    raise ValueError("Graph does not contain 'feat' in node features. Ensure features are properly assigned.")
+
 model = GRNGNN(in_dim, args.hidden_dim_1, args.hidden_dim_2, args.out_dim,args.dec,args.af_val,args.num_layers,args.num_epochs,args.aggr,args.var).to(device)#Net(data.num_features, data.num_features, 128, 64).to(device) #self, in_channels, hidden1_channels, hidden2_channels,out_channels
 
 if not args.saved_model_name:
@@ -120,6 +120,23 @@ for i in tqdm(test_ids):
 
     with torch.no_grad():
         pred = prediction_dgl(model, comp_g, args.af_val, args.dec)
+
+
+    if pred:
+        src_tgt = ((args.src_ntype, int(src_nid)), (args.tgt_ntype, int(tgt_nid)))
+        comp_graphs[src_tgt] = [comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids]
+
+        # Get labels with subgraph nids and eids 
+        edge_labels = pred_pair_to_edge_labels[src_tgt]
+        comp_g_edge_labels = get_comp_g_edge_labels(comp_g, edge_labels)
+
+        path_labels = pred_pair_to_path_labels[src_tgt]
+        comp_g_path_labels = get_comp_g_path_labels(comp_g, path_labels)
+
+        comp_g_labels[src_tgt] = [comp_g_edge_labels, comp_g_path_labels]
+
+
+
 
 explanation_masks = {}
 for explainer in args.eval_explainer_names:
