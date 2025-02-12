@@ -352,7 +352,7 @@ class PaGELink(nn.Module):
         EPS = 1e-3
         for e in range(self.num_epochs):    
             # 모델을 사용하여 전체 그래프 예측 수행 (그라디언트 추적 유지)
-            pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
+            pred_all, pos_pred_all = prediction_dgl(self.model, ml_ghomo, self.af_val, "dot_sum")  
 
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값 선택
@@ -373,7 +373,10 @@ class PaGELink(nn.Module):
             pred_loss = (-1) ** pred * torch.sigmoid(score).log()
             self.all_loss['pred_loss'] += [pred_loss.item()]
 
-            ml_ghomo.edata['eweight'] = ml_ghomo.edata['KD'].float() + ml_ghomo.edata['KO'].float()
+            ## 
+            ml_ghomo.edata['eweight'] = torch.tensor(pos_pred_all, dtype=torch.float32, device=device)
+
+            #ml_ghomo.edata['eweight'] = ml_ghomo.edata['KD'].float() + ml_ghomo.edata['KO'].float()
             # 엣지 가중치 가져오기
             ml_ghomo_eweights = ml_ghomo.edata['eweight']
 

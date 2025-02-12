@@ -263,4 +263,4 @@ def prediction_dgl(model, mp_g, af_val, dec):
     # 임계값 적용하여 binary classification
     pred = (pos_pred_all > 0.5).astype(int)
 
-    return pred
+    return pred, pos_pred_all
