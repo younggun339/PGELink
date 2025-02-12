@@ -1147,8 +1147,8 @@ def plot_homo_graph(ghomo,
 
 
         # 선택된 노드 처리
-        if selected_node_dict is not None:
-            selected_node_list = list(selected_node_dict)  # 단순 리스트 형태로 변환
+        if selected_nodes is not None:
+            selected_node_list = list(selected_nodes)  # 단순 리스트 형태로 변환
             node_colors = [selected_node_color if nid in selected_node_list else node_color for nid in all_nids]
         else:
             node_colors = node_color  # 전체 노드 기본 색상
@@ -1166,53 +1166,36 @@ def plot_homo_graph(ghomo,
         nx.draw_networkx_edges(nx_graph, pos, edge_list, **edge_kwargs, ax=ax)
         
         if selected_edge is not None:
-            ntype_hetero_nids_to_homo_nids = get_ntype_hetero_nids_to_homo_nids(ghetero)
-            homo_selected_edge_list = []
-            for etype in selected_edge:
-                src_ntype, _, tgt_ntype = ghetero.to_canonical_etype(etype)
-                src_nids, tgt_nids = selected_edge[etype]
-                for src_nid, tgt_nid in zip(src_nids.tolist(), tgt_nids.tolist()):
-                    homo_src_nid = ntype_hetero_nids_to_homo_nids[(src_ntype, src_nid)]
-                    homo_tgt_nid = ntype_hetero_nids_to_homo_nids[(tgt_ntype, tgt_nid)]
-                    homo_selected_edge_list += [(homo_src_nid, homo_tgt_nid)]
-        
-            nx.draw_networkx_edges(nx_graph, pos, homo_selected_edge_list, **selected_edge_kwargs, ax=ax)
+            selected_edge_kwargs = selected_edge_kwargs or {"edge_color": "red", "width": 2}
             
-            
+            # 동질 그래프에서는 그냥 리스트 형태로 엣지 목록을 받아 직접 사용
+            nx.draw_networkx_edges(nx_graph, pos, edgelist=selected_edge, **selected_edge_kwargs, ax=ax)
+
+
+      
      # Start labelling nodes
         if label == 'none':
             pass
         elif label == 'nid':
-            homo_nids_to_hetero_nids = get_homo_nids_to_hetero_nids(ghetero)
-            nx.draw_networkx_labels(nx_graph, pos, labels=homo_nids_to_hetero_nids)
+            labels = {nid: str(nid) for nid in nx_graph.nodes()}
+            nx.draw_networkx_labels(nx_graph, pos, labels, font_size=10, ax=ax)
         else:
-            # Set extra space to avoid label outside of the box
-            x_values, y_values = zip(*pos.values())
-            x_max = max(x_values)
-            x_min = min(x_values)
-            x_margin = (x_max - x_min) * 0.12
-            ax.set_xlim(x_min - x_margin, x_max + x_margin)
+            if label in ghomo.ndata:  # 노드 속성이 있는 경우
+                    node_features = ghomo.ndata[label].tolist()
+                    labels = {nid: str(node_features[i]) for i, nid in enumerate(nx_graph.nodes())}
+                    
+                    # 라벨 위치 조정
+                    if label_offset:
+                        offset = 0.8 / figsize[1]
+                        label_pos = {nid: [p[0], p[1] - offset] for nid, p in pos.items()} 
+                    else:
+                        label_pos = pos
 
-
-            if ghetero.ndata.get(label):
-                homo_nids_to_hetero_ndata_feat = get_homo_nids_to_hetero_ntype_data_feat(ghetero, label)
-                if label_offset:
-                    offset = 0.8 / figsize[1]
-                    label_pos = {nid : [p[0], p[1] - offset] for nid, p in pos.items()} 
-                else:
-                    label_pos = pos
-
-                nx.draw_networkx_labels(nx_graph, 
-                                        label_pos, 
-                                        font_size=14, 
-                                        font_weight='bold', 
-                                        labels=homo_nids_to_hetero_ndata_feat,
-                                        horizontalalignment='center',
-                                        verticalalignment='center',
-                                        ax=ax)
+                    nx.draw_networkx_labels(nx_graph, label_pos, labels=labels, font_size=14, font_weight='bold', ax=ax)
 
             else:
                 raise ValueError('Unrecognized label')
+
             
             
         ax.axis('off')
