@@ -435,16 +435,17 @@ class PaGELink(nn.Module):
         paths: list of lists
             each list contains (cannonical edge type, source node ids, target node ids)
         """
-    
+        print("edge_mask shape:", edge_mask.shape)
+        print("ghomo num_edges:", ghomo.num_edges())
         eweight = edge_mask.sigmoid()
         ghomo.edata['eweight'] = eweight
-
+        print(f"eweigth : {eweight}")
         # convert ghetero to ghomo and find paths
        
 
         homo_src_nid = int(src_nid)
         homo_tgt_nid = int(tgt_nid)
-
+        print(f"homo_src_nid : {homo_src_nid}")
         neg_path_score_func = get_neg_path_score_func(ghomo, 'eweight', [src_nid.item(), tgt_nid.item()])
         homo_paths = k_shortest_paths_with_max_length(ghomo, 
                                                        homo_src_nid, 
@@ -454,7 +455,7 @@ class PaGELink(nn.Module):
                                                        max_length=max_path_length)
 
         paths = [homo_paths]
-    
+
         return paths
     
     def explain(self,  
