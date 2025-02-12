@@ -418,7 +418,7 @@ class PaGELink(nn.Module):
                   tgt_nid, 
                   ghomo,
                   edge_mask,
-                  num_paths=1, 
+                  num_paths=5, 
                   max_path_length=3):
 
         """A postprocessing step that turns the `edge_mask_dict` into actual paths.
