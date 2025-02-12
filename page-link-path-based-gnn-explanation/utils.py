@@ -1078,6 +1078,155 @@ def eval_path_explanation_edges_path_hit(path_explanation_edges, path_labels):
     return 0
 
 
+
+
+'''
+Plotting utils
+'''
+def plot_homo_graph(ghomo,
+                      layout='spring',
+                      layout_seed=0,
+                      node_size=1000,
+                      edge_kwargs={},
+                      selected_nodes=None,
+                      selected_node_color='red',
+                      selected_edge=None,
+                      selected_edge_kwargs={},
+                      label='none',
+                      label_offset=False,
+                      title=None,
+                      figsize=(10, 10),
+                      fig_name=None,
+                      fig_format='png',
+                      is_show=True):
+        '''
+        Parameters
+        ----------
+        ghomo: a DGL homo graph with ndata `order`
+
+        label: String
+            one of ['none', nid'] or a node feature stored in ndata of ghetero
+
+        Returns
+        ----------
+        nx_graph : networkx graph
+        
+        '''
+        if selected_nodes is not None:
+            if isinstance(selected_nodes, dict):  # 혹시 이질 그래프용 포맷이라면?
+                selected_nodes = sum((list(v) for v in selected_nodes.values()), [])  # 모든 노드 ID 리스트로 변환
+            else:
+                selected_nodes = list(selected_nodes)
+
+        # Convert DGL graph to networkx graph
+        edges = torch.cat([t.unsqueeze(1) for t in ghomo.edges()], dim=1)
+        edge_list = [(n_frm, n_to) for (n_frm, n_to) in edges.tolist()]
+        nx_graph = dgl.to_networkx(ghomo)
+            
+        # Use different layout
+        if layout == 'spring':
+            pos = nx.spring_layout(nx_graph, seed=layout_seed)
+        elif layout == 'kk':
+            pos = nx.kamada_kawai_layout(nx_graph)
+        else:
+            raise ValueError('Unknown layout')
+
+        # Start drawing
+        plt.figure(figsize=figsize)
+        ax = plt.gca()
+ 
+        default_node_color = "skyblue"  # 기본 노드 색상
+        default_node_shape = "o"  # 기본 노드 모양 (원형)
+
+                # Default node properties
+        node_color = default_node_color 
+        node_shape = default_node_shape 
+
+        # 노드 ID 가져오기 (동질 그래프에서는 한 번만 가져오면 됨)
+        all_nids = list(nx_graph.nodes())
+
+
+        # 선택된 노드 처리
+        if selected_node_dict is not None:
+            selected_node_list = list(selected_node_dict)  # 단순 리스트 형태로 변환
+            node_colors = [selected_node_color if nid in selected_node_list else node_color for nid in all_nids]
+        else:
+            node_colors = node_color  # 전체 노드 기본 색상
+
+        # 모든 노드를 한 번에 그리기 (더 빠름)
+        nx.draw_networkx_nodes(nx_graph, 
+                            pos, 
+                            all_nids, 
+                            node_shape=node_shape, 
+                            node_color=node_colors, 
+                            node_size=node_size, 
+                            ax=ax)
+            
+        # Draw edges
+        nx.draw_networkx_edges(nx_graph, pos, edge_list, **edge_kwargs, ax=ax)
+        
+        if selected_edge is not None:
+            ntype_hetero_nids_to_homo_nids = get_ntype_hetero_nids_to_homo_nids(ghetero)
+            homo_selected_edge_list = []
+            for etype in selected_edge:
+                src_ntype, _, tgt_ntype = ghetero.to_canonical_etype(etype)
+                src_nids, tgt_nids = selected_edge[etype]
+                for src_nid, tgt_nid in zip(src_nids.tolist(), tgt_nids.tolist()):
+                    homo_src_nid = ntype_hetero_nids_to_homo_nids[(src_ntype, src_nid)]
+                    homo_tgt_nid = ntype_hetero_nids_to_homo_nids[(tgt_ntype, tgt_nid)]
+                    homo_selected_edge_list += [(homo_src_nid, homo_tgt_nid)]
+        
+            nx.draw_networkx_edges(nx_graph, pos, homo_selected_edge_list, **selected_edge_kwargs, ax=ax)
+            
+            
+     # Start labelling nodes
+        if label == 'none':
+            pass
+        elif label == 'nid':
+            homo_nids_to_hetero_nids = get_homo_nids_to_hetero_nids(ghetero)
+            nx.draw_networkx_labels(nx_graph, pos, labels=homo_nids_to_hetero_nids)
+        else:
+            # Set extra space to avoid label outside of the box
+            x_values, y_values = zip(*pos.values())
+            x_max = max(x_values)
+            x_min = min(x_values)
+            x_margin = (x_max - x_min) * 0.12
+            ax.set_xlim(x_min - x_margin, x_max + x_margin)
+
+
+            if ghetero.ndata.get(label):
+                homo_nids_to_hetero_ndata_feat = get_homo_nids_to_hetero_ntype_data_feat(ghetero, label)
+                if label_offset:
+                    offset = 0.8 / figsize[1]
+                    label_pos = {nid : [p[0], p[1] - offset] for nid, p in pos.items()} 
+                else:
+                    label_pos = pos
+
+                nx.draw_networkx_labels(nx_graph, 
+                                        label_pos, 
+                                        font_size=14, 
+                                        font_weight='bold', 
+                                        labels=homo_nids_to_hetero_ndata_feat,
+                                        horizontalalignment='center',
+                                        verticalalignment='center',
+                                        ax=ax)
+
+            else:
+                raise ValueError('Unrecognized label')
+            
+            
+        ax.axis('off')
+        if title is not None:
+            plt.title(textwrap.fill(title, width=60))
+        if fig_name is not None:
+            plt.savefig(fig_name, format=fig_format, bbox_inches='tight')
+        if is_show:
+            plt.show()
+        if fig_name is not None:
+            plt.close()
+            
+        return nx_graph
+
 '''
 Plotting utils
 '''
