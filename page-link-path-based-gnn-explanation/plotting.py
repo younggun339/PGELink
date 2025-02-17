@@ -22,7 +22,9 @@ def visualize_explanation_grn(
     edgelist = list(computation_graph.edges())
 
 
-    exp_edgelist = list(edge_mask.edges())
+    edge_src, edge_dst = edge_mask.edges()  # 두 개의 Tensor 반환
+    exp_edgelist = list(zip(edge_src.tolist(), edge_dst.tolist()))
+
 
     nodecolors = ['white' if n not in [source_node, target_node] else 'green' for n in nodelist]
     # 기본 엣지 색상은 검은색, exp_g에 포함된 엣지는 파란색
