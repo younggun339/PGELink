@@ -440,7 +440,7 @@ class PaGELink(nn.Module):
         """
         print("edge_mask shape:", edge_mask.shape)
         print("ghomo num_edges:", ghomo.num_edges())
-        eweight = edge_mask.sigmoid()
+        eweight = edge_mask.sigmoid().to(ghomo.device) 
         ghomo.edata['eweight'] = eweight
         print(f"eweigth : {eweight}")
         # convert ghetero to ghomo and find paths

@@ -365,7 +365,10 @@ def src_tgt_khop_in_subgraph(src_nid, tgt_nid, ghomo, k):
     subgraph_tgt_nid = inv_map[1]
     subgraph_feat_nid = subgraph.ndata[dgl.NID]
 
-    return subgraph_src_nid, subgraph_tgt_nid, subgraph, subgraph_feat_nid
+
+    subgraph_eid = subgraph.edata[dgl.EID]
+
+    return subgraph_src_nid, subgraph_tgt_nid, subgraph, subgraph_feat_nid, subgraph_eid
 ##########################
 '''
 Path finding utils
