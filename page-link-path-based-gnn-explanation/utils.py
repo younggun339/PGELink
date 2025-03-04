@@ -813,118 +813,72 @@ def get_comp_g_path_labels(comp_g, path_labels):
         comp_g_path_labels += [comp_g_path]
     return comp_g_path_labels
 
-
 def get_comp_g_edge_labels_grn(comp_g, edge_labels):
-    """Turn `edge_labels` with node ids in the original graph to
-       `comp_g_edge_labels` with node ids in the computation graph.
-       For easier evaluation.
+    """ 원본 그래프의 엣지 레이블을 computation graph 기준으로 변환 """
 
-    Parameters
-    ----------
-    comp_g : heterogeneous dgl graph
-        computation graph, with .ndata stores key dgl.NID
-    
-    edge_labels : dict
-        key=edge type, value=(source node ids, target node ids)
-   
-    Return
-    -------
-    comp_g_edge_labels: dict
-        key=edge type, value=a tensor of labels, each label is in {0, 1}
-    """
-    ntype_to_tensor_nids_to_comp_g_nids = {}
-    ntypes_to_comp_g_max_nids = {}
-    ntypes_to_nids = comp_g.ndata[dgl.NID]
-    for ntype in ntypes_to_nids.keys():
-        nids = ntypes_to_nids[ntype]
-        if nids.numel() > 0:
-            max_nid = nids.max().item()
-        else: 
-            max_nid = -1
+    # 1️⃣ Computation graph의 노드 ID 매핑
+    nids = comp_g.ndata[dgl.NID]  # 원본 노드 ID
+    max_nid = nids.max().item() if nids.numel() > 0 else -1
 
-        ntypes_to_comp_g_max_nids[ntype] = max_nid
+    # (원본 노드 ID → computation graph 노드 ID) 매핑 테이블
+    nids_to_comp_g_nids = torch.full((max_nid + 1,), -1, dtype=torch.long)
+    nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])  
 
-        nids_to_comp_g_nids = torch.zeros(max_nid + 1).long() - 1
-        # The i-th entry will be the nid in comp_g for the i-th node in g
-        nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])
-        ntype_to_tensor_nids_to_comp_g_nids[ntype] = nids_to_comp_g_nids
+    # 2️⃣ 엣지 레이블 벡터 초기화
+    comp_g_edge_labels = torch.zeros(comp_g.num_edges(), dtype=torch.long)
 
+    # 3️⃣ 엣지 레이블 변환
+    for (start_nid, end_nid), label in edge_labels.items():
+        # 원본 노드 ID가 computation graph에 존재하는지 확인
+        if start_nid > max_nid or end_nid > max_nid:
+            continue  # computation graph에 없는 노드라면 무시
 
-    comp_g_edge_labels = {}
-    for can_etype in edge_labels:
-        start_ntype, etype, end_ntype = can_etype
-        start_nids, end_nids = edge_labels[can_etype]
-        start_comp_g_max_nid, end_comp_g_max_nid = ntypes_to_comp_g_max_nids[start_ntype], ntypes_to_comp_g_max_nids[end_ntype]
+        # computation graph 기준 노드 ID 변환
+        comp_g_start_nid = nids_to_comp_g_nids[start_nid]
+        comp_g_end_nid = nids_to_comp_g_nids[end_nid]
 
-        # For edges in label but not in comp_g, exclude them
-        start_included_nid_mask = start_nids <= start_comp_g_max_nid
-        end_included_nid_mask = end_nids <= end_comp_g_max_nid
-        comp_g_included_nid_mask = end_included_nid_mask & start_included_nid_mask
+        # computation graph에서 해당 엣지가 존재하는지 확인
+        try:
+            comp_g_eid = comp_g.edge_ids(comp_g_start_nid.item(), comp_g_end_nid.item())
+            comp_g_edge_labels[comp_g_eid] = label  # 해당 엣지에 레이블 적용
+        except:
+            pass  # computation graph에 없는 엣지는 무시
 
-        start_nids = start_nids[comp_g_included_nid_mask]
-        end_nids = end_nids[comp_g_included_nid_mask]
+    return comp_g_edge_labels
 
-        comp_g_start_nids = ntype_to_tensor_nids_to_comp_g_nids[start_ntype][start_nids]
-        comp_g_end_nids = ntype_to_tensor_nids_to_comp_g_nids[end_ntype][end_nids]
-        comp_g_eids = comp_g.edge_ids(comp_g_start_nids.tolist(), comp_g_end_nids.tolist(), etype=etype)
-
-        num_edges = comp_g.num_edges(etype=can_etype)
-        comp_g_eid_mask = torch.zeros(num_edges)
-        comp_g_eid_mask[comp_g_eids] = 1
-
-        comp_g_edge_labels[can_etype] = comp_g_eid_mask
-
-    return comp_g_edge_labels    
 
 def get_comp_g_path_labels_grn(comp_g, path_labels):
-    """Turn `path_labels` with node ids in the original graph
-       `comp_g_path_labels` with node ids in the computation graph
-       For easier evaluation.
+    """Homo graph에서 원본 그래프의 path_labels를 computation graph 기준으로 변환"""
 
-    Parameters
-    ----------
-    comp_g : heterogeneous dgl graph
-        computation graph, with .ndata stores key dgl.NID
-    
-    path_labels : list of lists
-        Each list is a path, i.e., triples of 
-        (cannonical edge type, source node id, target node id)
-   
-    Returns
-    -------
-    comp_g_path_labels: list of lists
-        Each list is a path, i.e., tuples of (cannonical edge type, edge id)
-    """
-    ntype_to_tensor_nids_to_comp_g_nids = {}
-    ntypes_to_comp_g_max_nids = {}
-    ntypes_to_nids = comp_g.ndata[dgl.NID]
-    for ntype in ntypes_to_nids.keys():
-        nids = ntypes_to_nids[ntype]
-        if nids.numel() > 0:
-            max_nid = nids.max().item()
-        else: 
-            max_nid = -1
+    # 노드 ID 매핑: 원본 ID → Computation Graph ID
+    nids = comp_g.ndata[dgl.NID]
+    if nids.numel() > 0:
+        max_nid = nids.max().item()
+    else: 
+        max_nid = -1
 
-        ntypes_to_comp_g_max_nids[ntype] = max_nid
-
-        nids_to_comp_g_nids = torch.zeros(max_nid + 1).long() - 1
-        # The i-th entry will be the nid in comp_g for the i-th node in g
-        nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])
-        ntype_to_tensor_nids_to_comp_g_nids[ntype] = nids_to_comp_g_nids
+    # 원본 노드 ID → Computation Graph 노드 ID 변환 테이블
+    nids_to_comp_g_nids = torch.full((max_nid + 1,), -1, dtype=torch.long)
+    nids_to_comp_g_nids[nids] = torch.arange(nids.shape[0])
 
     comp_g_path_labels = []
-    for path in path_labels:
-        comp_g_path = []
-        for can_etype, start_nid, end_nid in path:
-            start_ntype, etype, end_ntype = can_etype
 
-            comp_g_start_nid = ntype_to_tensor_nids_to_comp_g_nids[start_ntype][start_nid].item()
-            comp_g_end_nid = ntype_to_tensor_nids_to_comp_g_nids[end_ntype][end_nid].item()
+    for (start_nid, end_nid), paths in path_labels.items():  # ✅ 딕셔너리 key-value 분리
+        comp_g_start_nid = nids_to_comp_g_nids[start_nid].item()
+        comp_g_end_nid = nids_to_comp_g_nids[end_nid].item()
 
-            comp_g_eid = comp_g.edge_ids(comp_g_start_nid, comp_g_end_nid, etype=can_etype)
-            comp_g_path += [(can_etype, comp_g_eid)]
-        comp_g_path_labels += [comp_g_path]
+        # Edge ID 찾기 (homo graph에서는 edge type이 필요 없음)
+        comp_g_eid = comp_g.edge_ids(comp_g_start_nid, comp_g_end_nid)
+
+        # 모든 path 정보를 유지하며 변환
+        comp_g_paths = []
+        for path in paths:  # ✅ path_labels의 값인 리스트 내부 순회
+            comp_g_paths.append((comp_g_eid, path))  # ✅ edge_id와 path 정보 함께 저장
+
+        comp_g_path_labels.append(comp_g_paths)
+    
     return comp_g_path_labels
+
 
 def eval_edge_mask_auc(edge_mask_dict, edge_labels):
     '''
