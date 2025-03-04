@@ -284,7 +284,7 @@ class PaGELink(nn.Module):
         self.all_loss['loss_on_path'] += [float(loss_on_path)]
         self.all_loss['loss_off_path'] += [float(loss_off_path)]
 
-        return loss   
+        return loss  
 
     
     def get_edge_mask(self, 
