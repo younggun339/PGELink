@@ -6,9 +6,9 @@ from collections import defaultdict
 from pathlib import Path
 from tqdm.auto import tqdm
 
-from data_grn_processing import load_grn_dataset_dgl
+from data_grn_processing import load_grn_dataset_dgl, load_label
 from model_grn import GRNGNN, prediction_dgl
-from utils import set_config_args, get_comp_g_edge_labels, get_comp_g_path_labels
+from utils import set_config_args, get_comp_g_edge_labels_grn, get_comp_g_path_labels_grn
 from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit
 
 
@@ -87,6 +87,7 @@ g, processed_g = load_grn_dataset_dgl(args.dataset_dir,
                                         args.dataset_name,
                                         args.valid_ratio,
                                         args.test_ratio)
+pred_pair_to_edge_labels, pred_pair_to_path_labels = load_label(args.dataset_dir, args.dataset_name)
 mp_g, train_pos_g, train_neg_g, val_pos_g, val_neg_g, test_pos_g, test_neg_g = [g for g in processed_g]
 
 try:
@@ -128,10 +129,10 @@ for i in tqdm(test_ids):
 
         # Get labels with subgraph nids and eids 
         edge_labels = pred_pair_to_edge_labels[src_tgt]
-        comp_g_edge_labels = get_comp_g_edge_labels(comp_g, edge_labels)
+        comp_g_edge_labels = get_comp_g_edge_labels_grn(comp_g, edge_labels)
 
         path_labels = pred_pair_to_path_labels[src_tgt]
-        comp_g_path_labels = get_comp_g_path_labels(comp_g, path_labels)
+        comp_g_path_labels = get_comp_g_path_labels_grn(comp_g, path_labels)
 
         comp_g_labels[src_tgt] = [comp_g_edge_labels, comp_g_path_labels]
 

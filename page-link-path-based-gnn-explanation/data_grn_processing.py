@@ -111,7 +111,13 @@ def load_grn_dataset_dgl(dataset_dir, dataset_name, val_ratio, test_ratio):
     processed_g = process_grn_data(g, val_ratio, test_ratio, neg)
     return g, processed_g
 
+def load_label(dataset_dir, dataset_name):
+    graph_saving_path = f'{dataset_dir}/{dataset_name}'
 
+    pred_pair_to_edge_labels = torch.load(f'{graph_saving_path}_pred_pair_to_edge_labels')
+    pred_pair_to_path_labels = torch.load(f'{graph_saving_path}_pred_pair_to_path_labels')
+    
+    return pred_pair_to_edge_labels, pred_pair_to_path_labels
 
 
 
