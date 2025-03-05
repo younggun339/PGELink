@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 from data_grn_processing import load_grn_dataset_dgl, load_label
 from model_grn import GRNGNN, prediction_dgl
 from utils import set_config_args, get_comp_g_edge_labels_grn, get_comp_g_path_labels_grn
-from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit
+from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit_grn
 
 
 # DGL 그래프에서 feature dimension 가져오기 (feat이 아닌 모든 ndata 속성 사용)
@@ -70,6 +70,13 @@ parser.add_argument('--dec', type=str, default='dot_sum', choices=['dot', 'cos',
                    help='Edge predictor에서 사용할 디코딩 연산 방식')
 parser.add_argument('--af_val', type=str, default='F.silu', choices=['F.silu', 'F.sigmoid', 'F.tanh'],
                    help='Edge predictor에서 사용할 활성화 함수')
+parser.add_argument('--num_layers', type=int, default=3,
+                   help='GNN의 레이어 개수')
+parser.add_argument('--num_epochs', type=int, default=20, help='How many epochs to learn the mask')
+parser.add_argument('--aggr', type=str, default='sum', choices=['sum', 'add'],
+                   help='operation passed to dgl.EdgePredictor')
+parser.add_argument('--var', type=str, default='ChebConv', choices=['ChebConv', 'SSGConv', 'ClusterGCNConv', 'HypergraphConv'],
+                   help='GNN 변형 방식 선택')
 
 
 args = parser.parse_args()
@@ -113,7 +120,7 @@ if args.max_num_samples > 0:
 for i in tqdm(test_ids):
     # Get the k-hop subgraph
     src_nid, tgt_nid = test_src_nids[i], test_tgt_nids[i]
-    comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids = src_tgt_khop_in_subgraph( src_nid,
+    comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids, comp_g_eid = src_tgt_khop_in_subgraph( src_nid,
                                                                                                tgt_nid,
                                                                                                mp_g,
                                                                                                args.num_hops)
@@ -124,7 +131,7 @@ for i in tqdm(test_ids):
 
 
     if pred:
-        src_tgt = ((args.src_ntype, int(src_nid)), (args.tgt_ntype, int(tgt_nid)))
+        src_tgt = (int(src_nid), int(tgt_nid))
         comp_graphs[src_tgt] = [comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids]
 
         # Get labels with subgraph nids and eids 
@@ -179,7 +186,7 @@ if args.eval_path_hit:
             comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids, = comp_graphs[src_tgt]
             comp_g_path_labels = comp_g_labels[src_tgt][1]
             comp_g_edge_mask_dict = pred_edge_to_comp_g_edge_mask[src_tgt]
-            topk_to_path_hit = eval_edge_mask_topk_path_hit(comp_g_edge_mask_dict, comp_g_path_labels, topks)
+            topk_to_path_hit = eval_edge_mask_topk_path_hit_grn(comp_g_edge_mask_dict, comp_g_path_labels, topks)
 
             for topk in topk_to_path_hit:
                 explainer_to_topk_path_hit[topk] += [topk_to_path_hit[topk]]        

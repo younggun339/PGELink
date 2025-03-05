@@ -827,8 +827,8 @@ def get_comp_g_edge_labels_grn(comp_g, edge_labels):
     # 2️⃣ 엣지 레이블 벡터 초기화
     comp_g_edge_labels = torch.zeros(comp_g.num_edges(), dtype=torch.long)
 
-    # 3️⃣ 엣지 레이블 변환
-    for (start_nid, end_nid), label in edge_labels.items():
+    # 3️⃣ 엣지 레이블 변환 (set을 직접 반복)
+    for start_nid, end_nid in edge_labels:  # ✅ set 내부 요소 반복
         # 원본 노드 ID가 computation graph에 존재하는지 확인
         if start_nid > max_nid or end_nid > max_nid:
             continue  # computation graph에 없는 노드라면 무시
@@ -840,11 +840,12 @@ def get_comp_g_edge_labels_grn(comp_g, edge_labels):
         # computation graph에서 해당 엣지가 존재하는지 확인
         try:
             comp_g_eid = comp_g.edge_ids(comp_g_start_nid.item(), comp_g_end_nid.item())
-            comp_g_edge_labels[comp_g_eid] = label  # 해당 엣지에 레이블 적용
+            comp_g_edge_labels[comp_g_eid] = 1  # ✅ set에는 label이 없으므로 기본값 1 할당
         except:
             pass  # computation graph에 없는 엣지는 무시
 
     return comp_g_edge_labels
+
 
 
 def get_comp_g_path_labels_grn(comp_g, path_labels):
@@ -863,21 +864,42 @@ def get_comp_g_path_labels_grn(comp_g, path_labels):
 
     comp_g_path_labels = []
 
-    for (start_nid, end_nid), paths in path_labels.items():  # ✅ 딕셔너리 key-value 분리
+    # ✅ 리스트를 직접 순회하여 path 변환
+    for path in path_labels:
+        comp_g_path= []
+
+        print(f"path : {path}")
+
+        start_nid = path[0][0]
+        end_nid = path[0][-1]
+        print(f"start_nid, end_nid : {start_nid}, {end_nid}")
+        print(nids_to_comp_g_nids[start_nid])
+        print(nids_to_comp_g_nids[start_nid].shape)
+
+
+        # Computation graph에서 노드 변환
         comp_g_start_nid = nids_to_comp_g_nids[start_nid].item()
         comp_g_end_nid = nids_to_comp_g_nids[end_nid].item()
+        print(f"comp_g_start_nid, comp_g_end_nid : {comp_g_start_nid}, {comp_g_end_nid}")
 
-        # Edge ID 찾기 (homo graph에서는 edge type이 필요 없음)
-        comp_g_eid = comp_g.edge_ids(comp_g_start_nid, comp_g_end_nid)
+        # Edge ID 찾기
+        try:
+            comp_g_eid = comp_g.edge_ids(comp_g_start_nid, comp_g_end_nid)
+            print(f"comp_g_eid : {comp_g_eid}")
+        except:
+            continue  # 없는 엣지는 무시
 
-        # 모든 path 정보를 유지하며 변환
-        comp_g_paths = []
-        for path in paths:  # ✅ path_labels의 값인 리스트 내부 순회
-            comp_g_paths.append((comp_g_eid, path))  # ✅ edge_id와 path 정보 함께 저장
+        # ✅ Path 내 모든 노드를 Computation Graph 기준으로 변환
+        for node in path:
+            if node > max_nid:
+                comp_g_path.append(-1)  # 없는 노드는 -1로 처리
+            else:
+                comp_g_path.append(nids_to_comp_g_nids[node].item())
 
-        comp_g_path_labels.append(comp_g_paths)
-    
+        comp_g_path_labels.append((comp_g_eid, tuple(comp_g_path)))  # ✅ (edge_id, path) 형태로 저장
+
     return comp_g_path_labels
+
 
 
 def eval_edge_mask_auc(edge_mask_dict, edge_labels):
@@ -976,6 +998,68 @@ def eval_edge_mask_topk_path_hit(edge_mask_dict, path_labels, topks=[10]):
         hit = eval_hard_edge_mask_path_hit(hard_edge_mask_dict, path_labels)
         topk_to_path_hit[r] += [hit]
     return topk_to_path_hit
+
+
+def eval_edge_mask_topk_path_hit_grn(edge_mask, path_labels, topks=[10]):
+    '''
+    Evaluate the path hit rate of the top k edges in an edge mask
+    
+    Parameters
+    ----------
+    edge_mask: tensor
+        A tensor of labels, each label is in (-inf, inf)
+
+    path_labels: list of lists
+        Each list is a path, i.e., tuples of (edge id, path)
+
+    topks: iterable
+        An iterable of the top `k` values. Each `k` determines how many edges to select 
+        from the top values of the mask.
+
+    Returns
+    ----------
+    topk_to_path_hit: dict
+        Mapping the top `k` to path hit rates
+    '''
+    M = len(edge_mask)
+    topks = {k: min(k, M) for k in topks}
+
+    topk_to_path_hit = defaultdict(list)
+    for r, k in topks.items():
+        threshold = edge_mask.topk(k)[0][-1].item()
+        hard_edge_mask = edge_mask >= threshold
+
+        hit = eval_hard_edge_mask_path_hit_grn(hard_edge_mask, path_labels)
+        topk_to_path_hit[r] += [hit]
+
+    return topk_to_path_hit
+
+
+def eval_hard_edge_mask_path_hit_grn(comp_g, hard_edge_mask, path_labels):
+    for path in path_labels:
+        if len(path) < 2:
+            continue  # 너무 짧은 path는 무시
+
+        hit_path = 1
+        for i in range(len(path) - 1):
+            src, tgt = path[i], path[i + 1]
+
+            # ✅ (src, tgt)를 edge_id로 변환
+            try:
+                edge_id = comp_g.edge_ids(src, tgt)
+            except:
+                hit_path = 0
+                break  # 없는 edge가 있으면 해당 path는 실패
+
+            # ✅ `hard_edge_mask`에서 해당 edge가 False면 실패
+            if not hard_edge_mask[edge_id]:
+                hit_path = 0
+                break
+
+        if hit_path:
+            return 1  # ✅ 하나라도 성공하면 1 반환
+    return 0
+
 
 def eval_hard_edge_mask_path_hit(hard_edge_mask_dict, path_labels):
     '''
