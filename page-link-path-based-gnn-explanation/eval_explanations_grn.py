@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 from data_grn_processing import load_grn_dataset_dgl, load_label
 from model_grn import GRNGNN, prediction_dgl
 from utils import set_config_args, get_comp_g_edge_labels_grn, get_comp_g_path_labels_grn
-from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc, eval_edge_mask_topk_path_hit_grn
+from utils import src_tgt_khop_in_subgraph, eval_edge_mask_auc_grn, eval_edge_mask_topk_path_hit_grn
 
 
 # DGL 그래프에서 feature dimension 가져오기 (feat이 아닌 모든 ndata 속성 사용)
@@ -161,9 +161,31 @@ for explainer in args.eval_explainer_names:
     
     mask_auc_list = []
     for src_tgt in comp_graphs:
+        print(f"src_tgt : {src_tgt}, num_edges in comp_g: {comp_g.num_edges()}")
         comp_g_src_nid, comp_g_tgt_nid, comp_g, comp_g_feat_nids, = comp_graphs[src_tgt]
+        comp_g_edge_labels, comp_g_path_labels = comp_g_labels[src_tgt]
         comp_g_edge_mask = pred_edge_to_comp_g_edge_mask[src_tgt]
-        mask_auc = eval_edge_mask_auc(comp_g_edge_mask)
+        print(f"Explainer: {explainer}, src_tgt: {src_tgt}, edge_mask length: {len(comp_g_edge_mask)}")
+        print(f"compg_edge_mask : {comp_g_edge_mask}")
+        print(f"compg_edge_labels : {comp_g_edge_labels}")
+
+        print("===== DEBUGGING START =====")
+
+        mask_keys = set(pred_edge_to_comp_g_edge_mask.keys())  # edge_mask의 키들
+        label_keys = set(comp_g_labels.keys())  # edge_labels의 키들
+
+        # 차이점 찾기
+        missing_in_mask = label_keys - mask_keys  # edge_labels에는 있는데 edge_mask에는 없는 키
+        missing_in_labels = mask_keys - label_keys  # edge_mask에는 있는데 edge_labels에는 없는 키
+
+        # 출력
+        print(f"Total edge_mask keys: {len(mask_keys)}")
+        print(f"Total edge_labels keys: {len(label_keys)}")
+        print(f"Missing in edge_mask (edge_labels에 있는데 edge_mask에 없는 것): {missing_in_mask}")
+        print(f"Missing in edge_labels (edge_mask에는 있는데 edge_labels에 없는 것): {missing_in_labels}")
+
+        print("===== DEBUGGING END =====")
+        mask_auc = eval_edge_mask_auc_grn(comp_g_edge_mask, comp_g_edge_labels)
         mask_auc_list += [mask_auc]
       
     avg_auc = np.mean(mask_auc_list)
