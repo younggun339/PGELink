@@ -130,7 +130,7 @@ pagelink = PaGELink(model,
 
 # 예측 실행
 with torch.no_grad():
-    edge_predictions = prediction_dgl(model, mp_g, args.af_val, args.dec)
+    edge_predictions, pos_pred_all = prediction_dgl(model, mp_g, args.af_val, args.dec)
 
 pred_edge_to_comp_g_edge_mask = {}
 pred_edge_to_paths = {}
@@ -146,6 +146,7 @@ for i in tqdm(test_ids):
     device = test_src_nids.device  # test_src_nids의 device를 기준으로 설정
 
     src_nid, tgt_nid = src_nid.to(device), tgt_nid.to(device) 
+    print(f"edge_predictions : {edge_predictions}")
     if edge_predictions[i] == 1:
         src_tgt = (int(src_nid), int(tgt_nid))  # 순수 노드 ID만 저장
         # PaGE-Link로 설명 생성

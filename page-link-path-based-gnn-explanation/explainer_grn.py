@@ -319,7 +319,7 @@ class PaGELink(nn.Module):
         with torch.no_grad():
             print()
             # 모델을 사용하여 전체 그래프의 예측 수행
-            pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
+            pred_all, pos_pred_all = prediction_dgl(self.model, ghomo, self.af_val, "dot_sum")  
 
             # 특정 src_nid와 tgt_nid에 해당하는 예측 값만 선택
             edge_index = torch.stack(ghomo.edges(), dim=0).cpu().numpy()
@@ -328,7 +328,7 @@ class PaGELink(nn.Module):
             # edge_index에서 해당하는 예측값 찾기
             mask = np.all(edge_index == src_tgt_pair, axis=0)
 
-            score = pred_all[mask][0]   # 해당 링크의 예측 점수
+            score = pos_pred_all[mask][0]   # 해당 링크의 예측 점수
 
             # 최종 예측값 변환
             pred = (score > 0).astype(int)
@@ -364,10 +364,10 @@ class PaGELink(nn.Module):
 
                         # pos_pred_all이 numpy이면 텐서로 변환
             if isinstance(pred_all, np.ndarray):
-                pred_all = torch.tensor(pred_all, dtype=torch.float32, device=device, requires_grad=True)
+                pos_pred_all = torch.tensor(pred_all, dtype=torch.float32, device=device, requires_grad=True)
 
 
-            score = pred_all[mask].to(dtype=torch.float32, device=device)[0]
+            score = pos_pred_all[mask].to(dtype=torch.float32, device=device)[0]
 
             # 예측 손실 계산
             pred_loss = (-1) ** pred * torch.sigmoid(score).log()
@@ -438,17 +438,14 @@ class PaGELink(nn.Module):
         paths: list of lists
             each list contains (cannonical edge type, source node ids, target node ids)
         """
-        print("edge_mask shape:", edge_mask.shape)
-        print("ghomo num_edges:", ghomo.num_edges())
+
         eweight = edge_mask.sigmoid().to(ghomo.device) 
         ghomo.edata['eweight'] = eweight
-        print(f"eweigth : {eweight}")
         # convert ghetero to ghomo and find paths
        
 
         homo_src_nid = int(src_nid)
         homo_tgt_nid = int(tgt_nid)
-        print(f"homo_src_nid : {homo_src_nid}")
         neg_path_score_func = get_neg_path_score_func(ghomo, 'eweight', [src_nid.item(), tgt_nid.item()])
         homo_paths = k_shortest_paths_with_max_length(ghomo, 
                                                        homo_src_nid, 
@@ -523,7 +520,8 @@ class PaGELink(nn.Module):
         (comp_g_src_nid, 
          comp_g_tgt_nid, 
          comp_g, 
-         comp_g_feat_nids) = src_tgt_khop_in_subgraph(       src_nid, 
+         comp_g_feat_nids,
+         comp_g_eids) = src_tgt_khop_in_subgraph(       src_nid, 
                                                              tgt_nid, 
                                                              ghomo, 
                                                              num_hops)
